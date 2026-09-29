@@ -1,0 +1,99 @@
+[
+  {
+    "id": "thread-presales-1",
+    "historyId": "1002",
+    "snippet": "Hi, is this dress available in navy...",
+    "messages": [
+      {
+        "id": "message-presales-in",
+        "threadId": "thread-presales-1",
+        "historyId": "1001",
+        "internalDate": "1790640000000",
+        "labelIds": ["INBOX"],
+        "snippet": "Hi, is this dress available in navy...",
+        "sizeEstimate": 120,
+        "payload": {
+          "mimeType": "text/plain",
+          "headers": [
+            {"name": "Date", "value": "Mon, 29 Sep 2026 08:00:00 +0000"},
+            {"name": "From", "value": "Customer One <customer1@example.invalid>"},
+            {"name": "To", "value": "support@dressafford-service.com"},
+            {"name": "Subject", "value": "Navy dress availability"},
+            {"name": "Message-ID", "value": "<presales-in@example.invalid>"}
+          ],
+          "body": {"size": 75, "data": "SGksIGlzIHRoaXMgZHJlc3MgYXZhaWxhYmxlIGluIG5hdnkgYW5kIGhvdyBsb25nIGRvZXMgcHJvZHVjdGlvbiB0YWtlPw"}
+        }
+      },
+      {
+        "id": "message-presales-out",
+        "threadId": "thread-presales-1",
+        "historyId": "1002",
+        "internalDate": "1790643600000",
+        "labelIds": ["SENT"],
+        "snippet": "Yes, navy is available...",
+        "sizeEstimate": 110,
+        "payload": {
+          "mimeType": "text/plain",
+          "headers": [
+            {"name": "Date", "value": "Mon, 29 Sep 2026 09:00:00 +0000"},
+            {"name": "From", "value": "DressAfford Support <support@dressafford-service.com>"},
+            {"name": "To", "value": "customer1@example.invalid"},
+            {"name": "Subject", "value": "Re: Navy dress availability"},
+            {"name": "Message-ID", "value": "<presales-out@example.invalid>"},
+            {"name": "In-Reply-To", "value": "<presales-in@example.invalid>"}
+          ],
+          "body": {"size": 68, "data": "WWVzLCBuYXZ5IGlzIGF2YWlsYWJsZS4gU3RhbmRhcmQgcHJvZHVjdGlvbiB0YWtlcyBhYm91dCAzIHdlZWtzLg"}
+        }
+      }
+    ]
+  },
+  {
+    "id": "thread-aftersales-1",
+    "historyId": "2002",
+    "snippet": "The dress arrived damaged...",
+    "messages": [
+      {
+        "id": "message-aftersales-in",
+        "threadId": "thread-aftersales-1",
+        "historyId": "2001",
+        "internalDate": "1790726400000",
+        "labelIds": ["INBOX"],
+        "snippet": "The dress arrived damaged...",
+        "sizeEstimate": 100,
+        "payload": {
+          "mimeType": "text/plain",
+          "headers": [
+            {"name": "Date", "value": "Tue, 30 Sep 2026 08:00:00 +0000"},
+            {"name": "From", "value": "Customer Two <customer2@example.invalid>"},
+            {"name": "To", "value": "support@dressafford-service.com"},
+            {"name": "Subject", "value": "Damaged dress return"},
+            {"name": "Message-ID", "value": "<aftersales-in@example.invalid>"}
+          ],
+          "body": {"size": 64, "data": "VGhlIGRyZXNzIGFycml2ZWQgZGFtYWdlZC4gSSB3b3VsZCBsaWtlIGEgcmVmdW5kIG9yIHJldHVybi4"}
+        }
+      },
+      {
+        "id": "message-aftersales-out",
+        "threadId": "thread-aftersales-1",
+        "historyId": "2002",
+        "internalDate": "1790730000000",
+        "labelIds": ["SENT"],
+        "snippet": "We are sorry. Please send photos...",
+        "sizeEstimate": 130,
+        "payload": {
+          "mimeType": "text/plain",
+          "headers": [
+            {"name": "Date", "value": "Tue, 30 Sep 2026 09:00:00 +0000"},
+            {"name": "From", "value": "DressAfford Support <support@dressafford-service.com>"},
+            {"name": "To", "value": "customer2@example.invalid"},
+            {"name": "Subject", "value": "Re: Damaged dress return"},
+            {"name": "Message-ID", "value": "<aftersales-out@example.invalid>"},
+            {"name": "In-Reply-To", "value": "<aftersales-in@example.invalid>"}
+          ],
+          "body": {"size": 91, "data": "V2UgYXJlIHNvcnJ5LiBQbGVhc2Ugc2VuZCBwaG90b3Mgb2YgdGhlIGRhbWFnZSBzbyB3ZSBjYW4gcmV2aWV3IHRoZSByZXR1cm4gcmVxdWVzdC4"}
+        }
+      }
+    ]
+  }
+]
+
