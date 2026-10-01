@@ -20,10 +20,14 @@ class GmailSyncService
         string $mailboxEmail,
         string $query = 'in:anywhere',
         int $pageLimit = 10,
+        ?int $threadLimit = null,
+        bool $resume = false,
         ?string $fixture = null,
         ?string $gwsConfigDir = null,
+        ?callable $progress = null,
     ): array {
         $mailboxEmail = strtolower($mailboxEmail);
+        $progress?->__invoke("准备同步邮箱 {$mailboxEmail}，查询条件：{$query}");
         $mailbox = Mailbox::firstOrCreate(['email' => $mailboxEmail], ['provider' => 'gmail']);
         $source = $fixture === null ? 'gws' : 'fixture';
         $run = SyncRun::create([
@@ -36,10 +40,11 @@ class GmailSyncService
         $totals = ['threads' => 0, 'messages' => 0];
 
         try {
-            foreach ($this->threads($query, $pageLimit, $fixture, $gwsConfigDir) as $thread) {
+            foreach ($this->threads($mailbox, $query, $pageLimit, $threadLimit, $resume, $fixture, $gwsConfigDir, $progress) as $thread) {
                 $result = $this->importThread($mailbox, $thread);
                 $totals['threads'] += $result['threads'];
                 $totals['messages'] += $result['messages'];
+                $progress?->__invoke("已保存 {$totals['threads']} 个 Thread、{$totals['messages']} 封邮件");
             }
 
             $run->update([
@@ -48,6 +53,7 @@ class GmailSyncService
                 'messages_seen' => $totals['messages'],
                 'finished_at' => now(),
             ]);
+            $progress?->__invoke('同步完成');
         } catch (Throwable $exception) {
             $run->update([
                 'status' => 'failed',
@@ -115,9 +121,18 @@ class GmailSyncService
     }
 
     /** @return iterable<array<string, mixed>> */
-    private function threads(string $query, int $pageLimit, ?string $fixture, ?string $gwsConfigDir): iterable
-    {
+    private function threads(
+        Mailbox $mailbox,
+        string $query,
+        int $pageLimit,
+        ?int $threadLimit,
+        bool $resume,
+        ?string $fixture,
+        ?string $gwsConfigDir,
+        ?callable $progress,
+    ): iterable {
         if ($fixture !== null) {
+            $progress?->__invoke("正在读取测试数据：{$fixture}");
             $contents = file_get_contents($fixture);
             if ($contents === false) {
                 throw new RuntimeException("Unable to read fixture: {$fixture}");
@@ -128,13 +143,47 @@ class GmailSyncService
                 throw new RuntimeException('Fixture must contain a JSON array of Gmail threads.');
             }
 
+            if ($threadLimit !== null) {
+                $threads = array_slice($threads, 0, $threadLimit);
+            }
+            if ($resume) {
+                $existing = GmailThread::where('mailbox_id', $mailbox->id)
+                    ->pluck('gmail_thread_id')
+                    ->flip();
+                $before = count($threads);
+                $threads = array_values(array_filter(
+                    $threads,
+                    fn (array $thread): bool => ! $existing->has((string) ($thread['id'] ?? '')),
+                ));
+                $progress?->__invoke('断点继续：已跳过 '.($before - count($threads)).' 个已保存 Thread');
+            }
+            $progress?->__invoke('找到 '.count($threads).' 个测试 Thread');
             yield from $threads;
 
             return;
         }
 
-        $client = new GwsClient($gwsConfigDir);
-        foreach ($client->listThreadIds($query, max(1, $pageLimit)) as $threadId) {
+        $client = new GwsClient($gwsConfigDir, progress: $progress);
+        $progress?->__invoke('正在从 Gmail 获取 Thread 列表');
+        $threadIds = $client->listThreadIds($query, max(1, $pageLimit));
+        if ($threadLimit !== null) {
+            $threadIds = array_slice($threadIds, 0, $threadLimit);
+        }
+        if ($resume) {
+            $existing = GmailThread::where('mailbox_id', $mailbox->id)
+                ->whereIn('gmail_thread_id', $threadIds)
+                ->pluck('gmail_thread_id')
+                ->all();
+            $before = count($threadIds);
+            $threadIds = array_values(array_diff($threadIds, $existing));
+            $progress?->__invoke('断点继续：已跳过 '.($before - count($threadIds)).' 个已保存 Thread');
+        }
+
+        $total = count($threadIds);
+        $progress?->__invoke("找到 {$total} 个 Thread，开始逐个读取完整会话");
+        foreach ($threadIds as $index => $threadId) {
+            $current = $index + 1;
+            $progress?->__invoke("正在获取 Thread {$current}/{$total}");
             yield $client->getThread($threadId);
         }
     }

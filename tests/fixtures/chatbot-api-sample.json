@@ -1,0 +1,57 @@
+{
+    "stories": [
+        {
+            "id": "story-1",
+            "name": "Sales assistant",
+            "description": "Pre-sale questions",
+            "version": 2,
+            "published": true,
+            "integrations": ["widget"],
+            "settings": {"language": "en", "confidence": 0.7},
+            "state": {},
+            "history": {"undo": true, "redo": false},
+            "diagram": {
+                "id": "start",
+                "type": "START_POINT",
+                "children": [
+                    {"id": "welcome", "type": "BOT_RESPONSE", "name": "Welcome", "children": []}
+                ]
+            }
+        }
+    ],
+    "chats": [
+        {
+            "id": "chat-1",
+            "storyId": "story-1",
+            "user": {"id": "user-1", "name": "Visitor"},
+            "source": "widget",
+            "attributes": {"default_url": "https://www.dressafford.com/product"},
+            "messages": [
+                {
+                    "id": "message-1",
+                    "requestId": "request-1",
+                    "date": "2026-09-30T08:00:00.000Z",
+                    "score": 1,
+                    "responses": [
+                        {"id": "input-1", "type": "INPUT_TEXT", "value": "Can this dress be made in red?"}
+                    ]
+                },
+                {
+                    "id": "message-2",
+                    "requestId": "request-2",
+                    "date": "2026-09-30T08:00:01.000Z",
+                    "responses": [
+                        {
+                            "id": "response-1",
+                            "type": "BOT_RESPONSE",
+                            "responses": [{"type": "text", "message": "Please check the available colors."}]
+                        }
+                    ]
+                }
+            ],
+            "createdAt": "2026-09-30T08:00:00.000Z",
+            "updatedAt": "2026-09-30T08:00:01.000Z"
+        }
+    ],
+    "training_phrases": []
+}

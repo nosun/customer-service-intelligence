@@ -1,0 +1,41 @@
+{
+    "tickets": [
+        {
+            "ID": "ticket-1",
+            "licenseID": 12345,
+            "shortID": "ABC123",
+            "subject": "Order status",
+            "status": "open",
+            "priority": 10,
+            "createdAt": "2026-09-01T10:00:00Z",
+            "updatedAt": "2026-09-01T10:05:00Z",
+            "lastMessageAt": "2026-09-01T10:05:00Z",
+            "requester": {"name": "Customer", "email": "customer@example.com"},
+            "assignment": {"agent": {"ID": "agent-1", "name": "Agent"}, "team": {"ID": "team-1", "name": "Support"}},
+            "source": {"type": "email", "detailedSource": "email"},
+            "events": [
+                {
+                    "ID": "event-1",
+                    "type": "message",
+                    "date": "2026-09-01T10:00:00Z",
+                    "author": {"ID": "client-1", "type": "client", "name": "Customer", "email": "customer@example.com"},
+                    "message": {"text": "Where is my order?", "richTextHtml": "<p>Where is my order?</p>", "richTextObj": {}, "isPrivate": false}
+                },
+                {
+                    "ID": "event-2",
+                    "type": "message",
+                    "date": "2026-09-01T10:05:00Z",
+                    "author": {"ID": "agent-1", "type": "agent", "name": "Agent", "email": "agent@example.com"},
+                    "message": {"text": "We are checking it.", "richTextHtml": "<p>We are checking it.</p>", "richTextObj": {}, "isPrivate": false}
+                },
+                {
+                    "ID": "event-3",
+                    "type": "attachments",
+                    "date": "2026-09-01T10:05:00Z",
+                    "author": {"ID": "agent-1", "type": "agent", "name": "Agent"},
+                    "attachments": {"isPrivate": false, "files": [{"token": "file-1", "name": "status.pdf", "type": "application/pdf", "size": 100, "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "url": "https://example.com/status.pdf"}]}
+                }
+            ]
+        }
+    ]
+}

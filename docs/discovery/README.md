@@ -12,6 +12,13 @@
 配套执行材料：
 
 - [邮件模板与历史 Case 收集指南](05-data-collection-guide.md)
+- [HelpDesk 样本与数据库建设建议](06-helpdesk-sample-and-data-model.md)
+- [HelpDesk 客户问题分类基线](07-helpdesk-analysis-baseline.md)
+- [ChatBot API 能力与接入边界](08-chatbot-api-discovery.md)
+- [Alberich Bot Story 初步分析](09-alberich-story-analysis.md)
+- [ChatBot 能力边界与演进方案](10-chatbot-capability-and-evolution.md)
+- [决策案例与客服策略学习实施计划](11-decision-case-and-policy-learning-plan.md)
+- [Gmail 与 HelpDesk 重合度核对](09-gmail-helpdesk-overlap.md)
 - [邮件模板登记模板](templates/email-template-record.md)
 - [历史 Case 登记模板](templates/case-sample-record.md)
 
@@ -27,13 +34,14 @@
 
 ## 已确认的试点信息
 
-- 第一批站点：`dressafford.com`。
+- 第一批站点：`dressafford.com`、`ellenbridals.com`；证据不足的历史 Ticket 暂不强行归属。
 - 第一批客服邮箱：`support@dressafford-service.com`。
 - 第一阶段目标：先同步客户来信并分析，不自动发送或执行业务动作。
 - 业务量：日均客户邮件不超过 20 封。
 - 主要语言：英语。
 - 业务范围意向：覆盖客服收到的售前和售后问题。
-- LiveChat：当前尚无可用账号，暂不作为 MVP 前置条件。
+- HelpDesk：已完成 API v1 只读采样，确认 Ticket 包含客户与客服消息、状态、分配和附件事件。
+- ChatBot：真实账号 Token 已配置并完成只读验证；已读取 Story、完整 `diagram` 树、未匹配训练短语和 Chat 样本，当前实际运行的是 `Alberich Bot`。
 - 测试环境：当前未准备；后续计划通过受控线上测试订单完成端到端验证。
 - 取消、退款、改地址、加急和补偿：当前由客服人员判断；客服近期离职，因此流程交接和决策依据沉淀是当前最高优先级。
 

@@ -6,6 +6,26 @@ return [
         'gws_binary' => env('GWS_BINARY', 'gws'),
     ],
 
+    'helpdesk' => [
+        'account_id' => env('HELPDESK_ACCOUNT_ID'),
+        'personal_access_token' => env('HELPDESK_PERSONAL_ACCESS_TOKEN'),
+        'base_url' => env('HELPDESK_API_URL', 'https://api.helpdesk.com'),
+    ],
+
+    'chatbot' => [
+        'account_id' => env('CHATBOT_ACCOUNT_ID'),
+        'access_token' => env('CHATBOT_DEVELOPER_ACCESS_TOKEN'),
+        'base_url' => env('CHATBOT_API_URL', 'https://api.chatbot.com'),
+    ],
+
+    'minimax' => [
+        'api_key' => env('MINIMAX_API_KEY'),
+        'base_url' => env('MINIMAX_API_URL', 'https://api.minimax.io/v1'),
+        'model' => env('MINIMAX_MODEL', 'MiniMax-M3'),
+        'timeout' => (int) env('MINIMAX_TIMEOUT', 180),
+        'max_completion_tokens' => (int) env('MINIMAX_MAX_COMPLETION_TOKENS', 12000),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

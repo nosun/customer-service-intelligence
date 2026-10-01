@@ -11,6 +11,7 @@ class MessageAnalysis extends Model
     protected function casts(): array
     {
         return [
+            'is_noise' => 'boolean',
             'matched_rules' => 'array',
             'order_candidates' => 'array',
             'analyzed_at' => 'datetime',

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\CandidateReplyPair;
 use App\Models\GmailThread;
+use App\Models\Mailbox;
 use App\Models\Message;
 use App\Models\MessageAnalysis;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,6 +14,32 @@ class GmailWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_analysis_excludes_spam_messages(): void
+    {
+        $mailbox = Mailbox::create(['email' => 'support@example.com']);
+        $thread = GmailThread::create([
+            'mailbox_id' => $mailbox->id,
+            'gmail_thread_id' => 'spam-thread',
+        ]);
+        $message = Message::create([
+            'mailbox_id' => $mailbox->id,
+            'thread_id' => $thread->id,
+            'gmail_message_id' => 'spam-message',
+            'direction' => 'inbound',
+            'subject' => 'You are a lottery winner',
+            'body_text' => 'Claim your prize now by replying with your details.',
+        ]);
+
+        $this->artisan('gmail:analyze')->assertSuccessful();
+
+        $this->assertDatabaseHas('message_analyses', [
+            'message_id' => $message->id,
+            'category' => 'noise',
+            'is_noise' => true,
+            'noise_type' => 'spam',
+        ]);
+    }
+
     public function test_fixture_sync_analysis_and_export_are_idempotent(): void
     {
         $fixture = base_path('tests/fixtures/gmail-threads.json');
@@ -21,8 +48,14 @@ class GmailWorkflowTest extends TestCase
             '--fixture' => $fixture,
         ];
 
+        $this->artisan('gmail:sync', $arguments)
+            ->expectsOutputToContain('找到 2 个测试 Thread')
+            ->expectsOutputToContain('同步完成')
+            ->assertSuccessful();
         $this->artisan('gmail:sync', $arguments)->assertSuccessful();
-        $this->artisan('gmail:sync', $arguments)->assertSuccessful();
+        $this->artisan('gmail:sync', [...$arguments, '--resume' => true])
+            ->expectsOutputToContain('断点继续：已跳过 2 个已保存 Thread')
+            ->assertSuccessful();
 
         $this->assertDatabaseCount('gmail_threads', 2);
         $this->assertDatabaseCount('messages', 4);
@@ -61,5 +94,16 @@ class GmailWorkflowTest extends TestCase
             'matched_rules',
             'review_status',
         ], $rows[0]);
+
+        $reviewOutput = storage_path('framework/testing/customer-issue-review.csv');
+        $summaryOutput = storage_path('framework/testing/customer-issue-summary.json');
+        $this->artisan('gmail:review-export', [
+            '--output' => $reviewOutput,
+            '--summary' => $summaryOutput,
+        ])->assertSuccessful();
+
+        $reviewRows = array_map('str_getcsv', file($reviewOutput, FILE_IGNORE_NEW_LINES));
+        $this->assertCount(3, $reviewRows);
+        $this->assertSame(2, json_decode(file_get_contents($summaryOutput), true)['customer_messages']);
     }
 }

@@ -16,7 +16,8 @@
 | console-new | 终端订单、生产工单、退款、投诉 | 订单查询/修改、Order Item 取消/拆分、退款、投诉、Work Order | MVP 只读获取生产与售后状态 |
 | tradeExpress | 运单、物流轨迹、物流异常 | 运单查询、批量轨迹、费用、渠道 | 获取物流状态和异常证据 |
 | Gmail | 邮件 Thread、Message、附件、标签 | Gmail API、watch、history.list、send | 第一批沟通渠道 |
-| LiveChat/Freshchat | 聊天会话、消息、客服、指标 | API/Webhook 能力需按实际账号和套餐验证 | 第二阶段接入 |
+| HelpDesk | Ticket、消息事件、客服、团队、标签 | 已完成 Ticket 全量与增量只读接入；能识别 LiveChat 来源和外部引用 | 客服工单与升级后的聊天事实源 |
+| ChatBot.com | Bot 聊天归档、Story 流程树、未匹配训练短语 | 官方 API 可读 Chat、Story `diagram` JSON 和 Training；未公开 AI Knowledge 数据源 API，也未公开 Story 流程树写入接口 | 补齐未生成 Ticket 的售前聊天；备份和分析 Bot 运行逻辑 |
 
 ## 试点接入状态
 
@@ -24,7 +25,8 @@
 | --- | --- | --- |
 | `dressafford.com` | 已确定为第一批站点 | 确认站点 ID、订单号格式和客户匹配方式 |
 | `support@dressafford-service.com` | 邮箱尚未完成交接 | 交接后先建立只读同步；在同步验证完成前不开放发送 |
-| LiveChat | 暂无可用账号 | 不阻塞 MVP，账号就绪后再验证历史数据/API 权限 |
+| HelpDesk | 已完成首次全量与增量同步，含 899 个 LiveChat 来源 Ticket | 将 ChatBot Chat 与 HelpDesk Ticket 做可核验关联 |
+| ChatBot.com | 官方接口能力已确认，本地只读采样客户端已完成；Developer Token 尚未配置 | 配置 Token 后采集 Story、Chat 和 Training 真实样本，核对字段及保留范围 |
 | 测试环境 | 暂不具备 | 先做离线样本和只读集成；线上测试订单另行制定受控方案 |
 
 ## 客服平台需要的统一查询能力
@@ -66,6 +68,7 @@ MVP 默认不直接执行以下操作：
 - [ ] 同一订单号在不同站点是否可能重复。
 - [ ] 客服目前在哪个系统执行取消、退款、投诉和改地址。
 - [ ] 可用于联调的测试订单与测试邮箱。
-- [ ] LiveChat/Freshchat 当前实际产品、账号套餐及数据保留范围。
+- [ ] HelpDesk 当前账号套餐、团队可见范围及历史数据保留范围。
+- [ ] ChatBot Developer Access Token、Story 数量、聊天归档保留范围和 AI Knowledge 资料来源清单。
 - [ ] Gmail 邮箱的 Workspace/个人账号类型、管理员和可授权方式。
 - [ ] `dressafford.com` 订单号格式及其在四个系统中的映射关系。
