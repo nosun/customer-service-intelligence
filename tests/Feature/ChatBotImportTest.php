@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\ChannelAccount;
+use App\Models\ChannelSyncCursor;
 use App\Models\ChatBotChat;
 use App\Models\ChatBotChatEvent;
 use App\Models\ChatBotStorySnapshot;
 use App\Services\ChatBot\ChatBotImportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ChatBotImportTest extends TestCase
@@ -77,6 +79,47 @@ class ChatBotImportTest extends TestCase
         $this->assertSame('0600', substr(sprintf('%o', fileperms($path)), -4));
 
         unlink($path);
+    }
+
+    public function test_full_sync_resumes_from_checkpoint_and_removes_it_when_complete(): void
+    {
+        $account = ChannelAccount::create([
+            'channel' => 'chatbot',
+            'external_account_id' => 'primary',
+            'display_name' => 'ChatBot',
+        ]);
+        ChannelSyncCursor::create([
+            'channel_account_id' => $account->id,
+            'source_resource' => 'chats',
+            'silo' => 'archive',
+            'status' => 'historical',
+            'sort_by' => 'createdAt',
+            'cursor_value' => '1790755200123',
+            'cursor_external_id' => 'chat-newer',
+        ]);
+        config([
+            'services.chatbot.access_token' => 'secret',
+            'services.chatbot.base_url' => 'https://api.chatbot.test',
+        ]);
+        Http::fake([
+            'https://api.chatbot.test/v2/stories' => Http::response([]),
+            'https://api.chatbot.test/v2/chats?after=1790755200123' => Http::response([
+                ['id' => 'chat-older', 'createdAt' => '2026-09-29T08:00:00.000Z'],
+            ]),
+            'https://api.chatbot.test/v2/chats/chat-older' => Http::response([
+                'id' => 'chat-older',
+                'createdAt' => '2026-09-29T08:00:00.000Z',
+                'messages' => [],
+            ]),
+        ]);
+
+        $this->artisan('chatbot:sync', ['--account' => 'primary', '--all' => true])
+            ->expectsOutputToContain('"full_crawl": true')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('chatbot_chats', ['external_id' => 'chat-older']);
+        $this->assertDatabaseCount('channel_sync_cursors', 0);
+        Http::assertSent(fn ($request): bool => str_contains($request->url(), 'after=1790755200123'));
     }
 
     /** @return array{stories: list<array<string, mixed>>, chats: list<array<string, mixed>>} */

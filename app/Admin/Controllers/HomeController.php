@@ -3,6 +3,7 @@
 namespace App\Admin\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\ChatBotChat;
 use App\Models\Conversation;
 use Encore\Admin\Layout\Content;
 use Encore\Admin\Widgets\InfoBox;
@@ -14,6 +15,7 @@ class HomeController extends Controller
         return $content
             ->title('客服数据后台')
             ->description('Customer Service Intelligence')
-            ->row(new InfoBox('Tickets', 'fa-comments', 'aqua', admin_url('conversations'), Conversation::count()));
+            ->row(new InfoBox('Tickets', 'fa-comments', 'aqua', admin_url('conversations'), Conversation::count()))
+            ->row(new InfoBox('ChatBot Chats', 'fa-commenting', 'green', admin_url('chatbot-chats'), ChatBotChat::count()));
     }
 }

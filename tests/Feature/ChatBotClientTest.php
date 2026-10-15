@@ -87,4 +87,38 @@ class ChatBotClientTest extends TestCase
         $this->assertSame('chat-40', $pages[1][0]['id']);
         Http::assertSent(fn ($request): bool => str_contains($request->url(), 'after=1790755200123'));
     }
+
+    public function test_it_can_resume_chat_pagination_from_a_saved_cursor(): void
+    {
+        Http::fake([
+            'https://api.chatbot.test/v2/chats?after=1790755200123' => Http::response([
+                ['id' => 'chat-older', 'createdAt' => '2026-09-29T08:00:00.000Z'],
+            ]),
+        ]);
+
+        $pages = iterator_to_array(
+            (new ChatBotClient('secret', 'https://api.chatbot.test'))->chatPages(40, 1790755200123),
+        );
+
+        $this->assertSame('chat-older', $pages[0][0]['id']);
+        Http::assertSentCount(1);
+    }
+
+    public function test_it_fetches_chat_details_in_a_bounded_pool(): void
+    {
+        Http::fake([
+            'https://api.chatbot.test/v2/chats/chat-1' => Http::response([
+                'id' => 'chat-1', 'messages' => [],
+            ]),
+            'https://api.chatbot.test/v2/chats/chat-2' => Http::response([
+                'id' => 'chat-2', 'messages' => [],
+            ]),
+        ]);
+
+        $chats = (new ChatBotClient('secret', 'https://api.chatbot.test'))
+            ->getChats(['chat-1', 'chat-2'], 2);
+
+        $this->assertSame(['chat-1', 'chat-2'], array_column($chats, 'id'));
+        Http::assertSentCount(2);
+    }
 }

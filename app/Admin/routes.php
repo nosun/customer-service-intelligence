@@ -1,5 +1,6 @@
 <?php
 
+use App\Admin\Controllers\ChatBotChatController;
 use App\Admin\Controllers\ConversationController;
 use App\Admin\Controllers\HomeController;
 use Encore\Admin\Facades\Admin;
@@ -15,4 +16,6 @@ Route::group([
 ], function (Router $router): void {
     $router->get('/', [HomeController::class, 'index'])->name('home');
     $router->resource('conversations', ConversationController::class)->only(['index', 'show']);
+    $router->get('chatbot-chats', [ChatBotChatController::class, 'index'])->name('chatbot-chats.index');
+    $router->get('chatbot-chats/{id}', [ChatBotChatController::class, 'show'])->name('chatbot-chats.show');
 });

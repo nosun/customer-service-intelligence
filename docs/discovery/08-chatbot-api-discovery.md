@@ -89,3 +89,47 @@ ChatBot 数据使用独立来源模型，避免把 Bot 的节点响应结构强�
 `retention_reason` 保存判定依据，`purge_after` 保存最早允许清理时间。正式清理任务必须先有只读报告、保留窗口和人工确认过的分类规则；当前同步过程不执行删除，也不调用 ChatBot.com 删除接口。
 
 AI Knowledge 资料先人工导出清单，确认网页、文章、文件的实际结构与更新频率后再决定同步方式。
+
+## 历史会话同步运行状态
+
+2026-10-02 已将 `chatbot:sync` 改为按 API 页面落库，并增加完整历史同步模式：
+
+```bash
+php artisan chatbot:sync --all
+```
+
+完整模式具备以下行为：
+
+- 每页最多读取 40 条 Chat 列表，再以有限并发读取详情。
+- 每页成功入库后保存 `createdAt` 毫秒游标和最后一个 Chat ID。
+- 中断或请求失败时保留游标，下次执行自动从检查点继续。
+- Chat 和 Event 使用外部 ID 幂等更新，重复同步不会产生重复数据。
+- 详情并发默认为 4，可通过 `--concurrency=1..8` 调整；完整抓取默认每页等待 500 毫秒。
+
+本次实际抓取结果：
+
+| 指标 | 结果 |
+| --- | ---: |
+| Chat | 400 |
+| Event | 4,819 |
+| Story | 4 |
+| 最早 Chat | 2026-08-28 23:56:05 UTC |
+| 最新 Chat | 2026-10-01 22:31:05 UTC |
+
+继续请求早于当前最早 Chat 的下一页时，ChatBot API 稳定返回 HTTP 403；同一 Token 仍能正常读取最新 Chat 和 Story，因此不是凭据整体失效。官方 Archive 文档只说明每页 40 条和 `after` 游标，没有声明该 403 对应的套餐、保留期或总量限制。当前准确结论是：**已同步 API 目前允许访问的 400 条会话，不能声称已取得账号全部历史会话。**
+
+历史检查点保留在 `channel_sync_cursors`。如果账号权限或历史保留范围调整，可以再次运行 `chatbot:sync --all` 从边界继续，无需重新读取已完成的 400 条。
+
+## 定期同步
+
+Laravel Scheduler 已登记：
+
+```text
+17 */6 * * *  php artisan chatbot:sync --chat-limit=80
+```
+
+任务每 6 小时重读最近 80 条 Chat，使用外部 ID 幂等更新。这一重叠窗口可以覆盖近期新增和仍在更新的会话，也避免每次扫描全部历史。
+
+当前 Mac 的 LaunchAgent `com.dressafford.customer-service-intelligence.scheduler` 正在运行 `php artisan schedule:work`，因此该任务会随现有 Scheduler 自动执行。迁移到其他机器后，仍需部署 Cron、进程管理器或等价机制持续运行 Laravel Scheduler。
+
+ChatBot Archive API 按 `createdAt` 向历史方向分页，官方没有提供按 `updatedAt` 增量读取的契约。因此定期任务只能通过“最近 80 条重叠窗口 + Chat ID 幂等更新”捕获近期变化；非常旧的 Chat 如果之后还能被修改，不能保证仅靠此接口发现。

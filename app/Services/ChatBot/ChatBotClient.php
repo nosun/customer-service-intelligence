@@ -5,8 +5,10 @@ namespace App\Services\ChatBot;
 use DateTimeImmutable;
 use Generator;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Throwable;
 
 class ChatBotClient
 {
@@ -41,11 +43,11 @@ class ChatBotClient
     }
 
     /** @return Generator<int, list<array<string, mixed>>> */
-    public function chatPages(int $limit): Generator
+    public function chatPages(int $limit, ?int $initialAfter = null): Generator
     {
         $limit = max(1, $limit);
         $count = 0;
-        $after = null;
+        $after = $initialAfter;
 
         while ($count < $limit) {
             $page = $this->listChats($after);
@@ -75,6 +77,49 @@ class ChatBotClient
     public function getChat(string $chatId): array
     {
         return $this->objectResponse("/v2/chats/{$chatId}", 'chat');
+    }
+
+    /**
+     * @param  list<string>  $chatIds
+     * @return list<array<string, mixed>>
+     */
+    public function getChats(array $chatIds, int $concurrency = 8): array
+    {
+        $this->ensureConfigured();
+        $chatIds = array_values(array_unique($chatIds));
+        if ($chatIds === []) {
+            return [];
+        }
+
+        $responses = Http::pool(function (Pool $pool) use ($chatIds): void {
+            foreach ($chatIds as $chatId) {
+                $pool->as($chatId)
+                    ->baseUrl($this->baseUrl)
+                    ->withToken($this->accessToken)
+                    ->acceptJson()
+                    ->withUserAgent('customer-service-intelligence/0.1')
+                    ->connectTimeout(10)
+                    ->timeout(30)
+                    ->get("/v2/chats/{$chatId}");
+            }
+        }, max(1, $concurrency));
+
+        $chats = [];
+        foreach ($chatIds as $chatId) {
+            $response = $responses[$chatId] ?? null;
+            if ($response instanceof Throwable || $response === null || $response->failed()) {
+                $chats[] = $this->getChat($chatId);
+
+                continue;
+            }
+            $payload = $response->json();
+            if (! is_array($payload) || array_is_list($payload)) {
+                throw new RuntimeException('ChatBot returned an invalid chat.');
+            }
+            $chats[] = $payload;
+        }
+
+        return $chats;
     }
 
     /** @return list<array<string, mixed>> */
@@ -137,7 +182,7 @@ class ChatBotClient
             ->withUserAgent('customer-service-intelligence/0.1')
             ->connectTimeout(10)
             ->timeout(30)
-            ->retry(3, 500, throw: false);
+            ->retry([1000, 3000, 10000], throw: false);
     }
 
     private function ensureConfigured(): void

@@ -209,6 +209,8 @@ ChatBot.com 当前建议新配置使用 Text AI Agent。它使用 Knowledge、In
 
 完成标准：可以按站点和 Story 解释客户主要问题、Bot 失败位置及创建 Ticket 的原因。
 
+截至 2026-10-02，历史同步框架和定期同步已经落地。当前数据库包含 API 可访问的 400 条 Chat 和 4,819 个 Event；继续向前分页时 API 在当前历史边界返回 403，详情见 [ChatBot API 能力与接入边界](08-chatbot-api-discovery.md#历史会话同步运行状态)。Chat 与 HelpDesk Ticket 的稳定关联、价值分类和指标统计仍属于本阶段后续工作。
+
 ### 阶段二：整理 Story 与知识
 
 工作内容：
@@ -271,4 +273,3 @@ ChatBot.com 当前建议新配置使用 Text AI Agent。它使用 Knowledge、In
 - [What is AI Knowledge](https://www.chatbot.com/help/artificial-intelligence/what-is-ai-knowledge/)
 - [Duplicate your chatbot](https://www.chatbot.com/help/stories/clone-your-story/)
 - [Install ChatBot.com using Chat Widget](https://www.chatbot.com/help/install-chatbot/widget-installation/)
-

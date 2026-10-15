@@ -17,3 +17,8 @@ Schedule::command('helpdesk:analyze')
     ->dailyAt('02:30')
     ->timezone('Asia/Shanghai')
     ->withoutOverlapping(60);
+
+Schedule::command('chatbot:sync --chat-limit=80')
+    ->cron('17 */6 * * *')
+    ->timezone('Asia/Shanghai')
+    ->withoutOverlapping(30);
