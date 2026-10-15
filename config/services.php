@@ -24,6 +24,7 @@ return [
         'model' => env('MINIMAX_MODEL', 'MiniMax-M3'),
         'timeout' => (int) env('MINIMAX_TIMEOUT', 180),
         'max_completion_tokens' => (int) env('MINIMAX_MAX_COMPLETION_TOKENS', 12000),
+        'research_synthesis_ticket_chunk_size' => (int) env('MINIMAX_RESEARCH_SYNTHESIS_TICKET_CHUNK_SIZE', 5),
     ],
 
     /*

@@ -15,9 +15,15 @@ class DecisionNode extends Model
         return [
             'observed_facts' => 'array',
             'missing_facts' => 'array',
+            'intents' => 'array',
+            'required_facts' => 'array',
+            'required_actions' => 'array',
+            'knowledge_gaps' => 'array',
+            'prohibited_claims' => 'array',
             'uncertainties' => 'array',
             'is_exception' => 'boolean',
             'extraction_confidence' => 'float',
+            'reviewed_at' => 'datetime',
         ];
     }
 

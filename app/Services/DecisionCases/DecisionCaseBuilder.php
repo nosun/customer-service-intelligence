@@ -9,11 +9,12 @@ use App\Models\DecisionNode;
 use App\Models\DecisionNodeEvidence;
 use App\Services\AI\MiniMaxClient;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 use Throwable;
 
 class DecisionCaseBuilder
 {
-    public const VERSION = 'decision-case-extractor-v1';
+    public const VERSION = 'decision-case-extractor-v2';
 
     public function __construct(
         private readonly MiniMaxClient $client,
@@ -62,11 +63,26 @@ class DecisionCaseBuilder
 
         try {
             $completion = $this->client->structuredCompletion($systemPrompt, $userPrompt);
-            $output = $this->validator->validate(
-                $completion['output'],
-                $prepared['event_ids'],
-                $prepared['event_authors'],
-            );
+            try {
+                $output = $this->validator->validate(
+                    $completion['output'],
+                    $prepared['event_ids'],
+                    $prepared['event_authors'],
+                );
+            } catch (RuntimeException $validationError) {
+                $retry = $this->client->structuredCompletion(
+                    $systemPrompt,
+                    $this->validationRetryPrompt($userPrompt, $completion['output'], $validationError),
+                );
+                $retry['usage'] = $this->combinedUsage($completion['usage'], $retry['usage']);
+                $retry['usage']['validation_retries'] = 1;
+                $completion = $retry;
+                $output = $this->validator->validate(
+                    $completion['output'],
+                    $prepared['event_ids'],
+                    $prepared['event_authors'],
+                );
+            }
             $output['case_risk'] = $this->higherRisk(
                 $output['case_risk'],
                 data_get($prepared, 'context.existing_rule_analysis.urgency'),
@@ -95,9 +111,16 @@ class DecisionCaseBuilder
                         'sequence' => $nodeOutput['sequence'],
                         'problem_type' => $this->nullableString($nodeOutput['problem_type'] ?? null),
                         'scenario_key' => $this->nullableString($nodeOutput['scenario_key'] ?? null),
+                        'lifecycle_stage' => $nodeOutput['lifecycle_stage'],
                         'request_summary' => trim($nodeOutput['request_summary']),
+                        'intents' => $nodeOutput['intents'],
                         'observed_facts' => $nodeOutput['observed_facts'],
                         'missing_facts' => $nodeOutput['missing_facts'],
+                        'required_facts' => $nodeOutput['required_facts'],
+                        'required_actions' => $nodeOutput['required_actions'],
+                        'response_strategy' => $nodeOutput['response_strategy'],
+                        'knowledge_gaps' => $nodeOutput['knowledge_gaps'],
+                        'prohibited_claims' => $nodeOutput['prohibited_claims'],
                         'observed_decision' => $nodeOutput['observed_decision'],
                         'observed_action' => $this->nullableString($nodeOutput['observed_action'] ?? null),
                         'stated_reason' => $this->nullableString($nodeOutput['stated_reason'] ?? null),
@@ -208,6 +231,29 @@ class DecisionCaseBuilder
         }
 
         return $rank[$ruleRisk] > $rank[$aiRisk] ? $ruleRisk : $aiRisk;
+    }
+
+    /** @param array<string, mixed> $output */
+    private function validationRetryPrompt(string $userPrompt, array $output, RuntimeException $error): string
+    {
+        return $userPrompt."\n\nYour previous JSON was rejected by deterministic validation: "
+            .$error->getMessage()
+            ."\nReturn a corrected complete JSON object. Do not add a node without client request evidence. "
+            .'Use only allowed event IDs and evidence roles. Previous JSON: '
+            .json_encode($output, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @param array<string, mixed> $first
+     * @param  array<string, mixed>  $second
+     * @return array<string, mixed>
+     */
+    private function combinedUsage(array $first, array $second): array
+    {
+        foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $field) {
+            $second[$field] = (int) ($first[$field] ?? 0) + (int) ($second[$field] ?? 0);
+        }
+
+        return $second;
     }
 
     /**

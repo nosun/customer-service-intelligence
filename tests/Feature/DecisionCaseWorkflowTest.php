@@ -183,6 +183,44 @@ class DecisionCaseWorkflowTest extends TestCase
         $this->assertContains(['event_id' => 1, 'role' => 'request'], $output['nodes'][0]['evidence']);
     }
 
+    public function test_validator_merges_an_agent_only_follow_up_into_the_preceding_customer_node(): void
+    {
+        $output = (new DecisionCaseOutputValidator)->validate([
+            'case_summary' => 'test',
+            'primary_category' => 'after_sales',
+            'primary_problem_type' => 'after_sales_return_refund',
+            'case_risk' => 'high',
+            'nodes' => [
+                [
+                    'sequence' => 1,
+                    'request_summary' => '客户申请退货。',
+                    'observed_facts' => [],
+                    'missing_facts' => [],
+                    'observed_decision' => 'unknown',
+                    'evidence' => [['event_id' => 1, 'role' => 'request']],
+                    'uncertainties' => [],
+                    'extraction_confidence' => 0.9,
+                ],
+                [
+                    'sequence' => 2,
+                    'request_summary' => '客服提供退货说明。',
+                    'observed_facts' => [],
+                    'missing_facts' => [],
+                    'observed_decision' => 'conditional',
+                    'observed_action' => '提供退货步骤',
+                    'evidence' => [['event_id' => 2, 'role' => 'action']],
+                    'uncertainties' => [],
+                    'extraction_confidence' => 0.8,
+                ],
+            ],
+        ], [1, 2], [1 => 'client', 2 => 'agent']);
+
+        $this->assertCount(1, $output['nodes']);
+        $this->assertSame('conditional', $output['nodes'][0]['observed_decision']);
+        $this->assertSame('提供退货步骤', $output['nodes'][0]['observed_action']);
+        $this->assertContains(['event_id' => 2, 'role' => 'action'], $output['nodes'][0]['evidence']);
+    }
+
     private function event(
         Conversation $conversation,
         string $externalId,

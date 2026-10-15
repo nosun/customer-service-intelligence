@@ -27,4 +27,9 @@ class DecisionCase extends Model
     {
         return $this->hasMany(DecisionNode::class)->orderBy('sequence');
     }
+
+    public function researchBatchItems(): HasMany
+    {
+        return $this->hasMany(KnowledgeResearchBatchItem::class);
+    }
 }
