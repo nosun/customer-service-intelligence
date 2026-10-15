@@ -231,6 +231,9 @@ return [
          */
         'except' => [
             env('ADMIN_ROUTE_PREFIX', 'admin').'/auth/logs*',
+            // API tokens are encrypted at rest and must never be copied into operation logs.
+            'post:'.env('ADMIN_ROUTE_PREFIX', 'admin').'/commerce-sites',
+            'put:'.env('ADMIN_ROUTE_PREFIX', 'admin').'/commerce-sites/*',
         ],
     ],
 
