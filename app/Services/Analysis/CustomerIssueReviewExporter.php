@@ -67,8 +67,8 @@ class CustomerIssueReviewExporter
                     $row->is_noise ? 'yes' : 'no',
                     $row->noise_type,
                     implode('|', $orders),
-                    $row->subject,
-                    $this->excerpt((string) ($row->body_text ?: $row->body_html)),
+                    $this->spreadsheetSafe($this->excerpt((string) $row->subject)),
+                    $this->spreadsheetSafe($this->excerpt((string) ($row->body_text ?: $row->body_html))),
                     implode('|', $this->decodeList($row->matched_rules)),
                     'pending',
                     '',
@@ -110,7 +110,6 @@ class CustomerIssueReviewExporter
             $isNoise = (bool) $row->is_noise;
             $noiseCount += $isNoise ? 1 : 0;
             $missingText += trim((string) $row->body_text) === '' ? 1 : 0;
-            $ordersFound += $this->decodeList($row->order_candidates) !== [] ? 1 : 0;
             if ($row->sent_at !== null) {
                 $dates[] = (string) $row->sent_at;
             }
@@ -122,6 +121,7 @@ class CustomerIssueReviewExporter
                 continue;
             }
 
+            $ordersFound += $this->decodeList($row->order_candidates) !== [] ? 1 : 0;
             $categories[$row->category] = ($categories[$row->category] ?? 0) + 1;
             $problemType = $row->problem_type ?: 'unknown';
             $problemTypes[$problemType] = ($problemTypes[$problemType] ?? 0) + 1;
@@ -185,6 +185,11 @@ class CustomerIssueReviewExporter
         if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
             throw new RuntimeException("Unable to create output directory: {$directory}");
         }
+    }
+
+    private function spreadsheetSafe(string $value): string
+    {
+        return preg_match('/^[=+\-@]/', $value) === 1 ? "'".$value : $value;
     }
 
     private function rate(int $numerator, int $denominator): float

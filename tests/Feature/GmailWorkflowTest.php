@@ -26,8 +26,8 @@ class GmailWorkflowTest extends TestCase
             'thread_id' => $thread->id,
             'gmail_message_id' => 'spam-message',
             'direction' => 'inbound',
-            'subject' => 'You are a lottery winner',
-            'body_text' => 'Claim your prize now by replying with your details.',
+            'subject' => '=HYPERLINK("mailto:attacker@example.com") lottery winner',
+            'body_text' => 'Claim your prize for order dad20261015-12345 now by replying with your details.',
         ]);
 
         $this->artisan('gmail:analyze')->assertSuccessful();
@@ -38,6 +38,22 @@ class GmailWorkflowTest extends TestCase
             'is_noise' => true,
             'noise_type' => 'spam',
         ]);
+
+        $reviewOutput = storage_path('framework/testing/spam-review.csv');
+        $summaryOutput = storage_path('framework/testing/spam-summary.json');
+        $this->artisan('gmail:review-export', [
+            '--output' => $reviewOutput,
+            '--summary' => $summaryOutput,
+        ])->assertSuccessful();
+
+        $rows = array_map('str_getcsv', file($reviewOutput, FILE_IGNORE_NEW_LINES));
+        $summary = json_decode(file_get_contents($summaryOutput), true);
+
+        $this->assertStringStartsWith("'=HYPERLINK", $rows[1][8]);
+        $this->assertStringNotContainsString('attacker@example.com', $rows[1][8]);
+        $this->assertSame(0, $summary['customer_messages']);
+        $this->assertSame(0, $summary['messages_with_order_number']);
+        $this->assertSame(0, $summary['order_number_coverage']);
     }
 
     public function test_fixture_sync_analysis_and_export_are_idempotent(): void
