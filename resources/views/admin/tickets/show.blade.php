@@ -3,6 +3,16 @@
     $draft = $ticket->drafts->first();
     $reviewLabels = ['candidate' => '待审核', 'confirmed' => '已确认', 'corrected' => '已修正', 'rejected' => '已拒绝'];
     $assignment = $ticket->assignment_snapshot ?: [];
+    $cancellationContext = $ticket->latestCancellationContext;
+    $businessSummary = $cancellationContext?->summary ?: [];
+    $outcomeLabels = [
+        'cancelled_refund_pending' => '已取消，退款记录未全部完成',
+        'cancelled_refund_recorded' => '已取消，已记录退款',
+        'cancelled_without_refund_record' => '已取消，未查到退款记录',
+        'not_cancelled_refund_recorded' => '订单未取消，但已有退款记录',
+        'not_cancelled' => '订单未取消',
+        'order_not_found' => '订单不存在',
+    ];
 @endphp
 
 <style>
@@ -119,6 +129,46 @@
                 <dt>需复核</dt><dd>{{ $ticket->analysis?->needs_review ? '是' : '否' }}</dd>
             </dl>
             @if($ticket->labels->isNotEmpty())<hr>@foreach($ticket->labels as $label)<span class="label label-info" style="display:inline-block;margin:2px">{{ $label->label_type }}: {{ $label->label }}</span>@endforeach @endif
+            </div>
+        </div>
+
+        <div class="box box-info">
+            <div class="box-header with-border"><h3 class="box-title">取消处理核验</h3></div>
+            <div class="box-body">
+                <form method="post" action="{{ admin_url('conversations/'.$ticket->id.'/verify-cancellation') }}">
+                    @csrf
+                    <div class="form-group">
+                        <label>订单号</label>
+                        <input class="form-control" name="order_no" value="{{ old('order_no', $cancellationContext?->lookup_key) }}" placeholder="留空则从 Ticket 自动提取">
+                    </div>
+                    <button class="btn btn-info"><i class="fa fa-search"></i> 只读查询 console-new</button>
+                </form>
+
+                @if($cancellationContext)
+                    <hr>
+                    <dl class="detail-kv">
+                        <dt>查询状态</dt><dd>{{ $cancellationContext->lookup_status }}</dd>
+                        <dt>订单号</dt><dd>{{ $cancellationContext->lookup_key ?: '未识别' }}</dd>
+                        <dt>业务结果</dt><dd>{{ $outcomeLabels[$cancellationContext->outcome] ?? ($cancellationContext->outcome ?: '未知') }}</dd>
+                        <dt>订单状态</dt><dd>{{ data_get($businessSummary, 'status.order_status_text', '—') }}</dd>
+                        <dt>发货状态</dt><dd>{{ data_get($businessSummary, 'status.shipping_status_text', '—') }}</dd>
+                        <dt>取消时间</dt><dd>{{ data_get($businessSummary, 'time.customer_canceled_at', '—') }}</dd>
+                        <dt>退款金额</dt><dd>{{ data_get($businessSummary, 'amounts.refund', '—') }}</dd>
+                        <dt>退款记录</dt><dd>{{ data_get($businessSummary, 'assessment.completed_refund_records', 0) }} 已完成 / {{ data_get($businessSummary, 'assessment.pending_refund_records', 0) }} 未完成</dd>
+                        <dt>邮箱匹配</dt><dd>{{ data_get($businessSummary, 'identity_check.email_match') === null ? '未核实' : (data_get($businessSummary, 'identity_check.email_match') ? '匹配' : '不匹配') }}</dd>
+                        <dt>政策判断</dt><dd>{{ data_get($businessSummary, 'assessment.policy_review') === 'manual_review_required' ? '需要人工确认' : '—' }}</dd>
+                        <dt>查询时间</dt><dd>{{ optional($cancellationContext->queried_at)->format('Y-m-d H:i:s') ?: '—' }}</dd>
+                    </dl>
+                    @if($cancellationContext->error_message)
+                        <div class="alert alert-danger" style="margin-bottom:0">{{ $cancellationContext->error_code }}：{{ $cancellationContext->error_message }}</div>
+                    @elseif(data_get($businessSummary, 'identity_check.email_match') === false)
+                        <div class="alert alert-warning" style="margin-bottom:0">订单邮箱与 Ticket 请求人不一致，不能直接认定为同一客户。</div>
+                    @else
+                        <p class="text-muted" style="margin-bottom:0">业务系统结果与 Ticket 历史沟通分别保存；此核验不会修改订单、退款或 Decision Case 的人工结论。</p>
+                    @endif
+                @else
+                    <p class="text-muted" style="margin-top:12px;margin-bottom:0">尚未查询业务系统，HelpDesk 的 solved 状态不代表订单已取消或退款已完成。</p>
+                @endif
             </div>
         </div>
 

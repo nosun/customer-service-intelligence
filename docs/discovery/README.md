@@ -20,6 +20,11 @@
 - [决策案例与客服策略学习实施计划](11-decision-case-and-policy-learning-plan.md)
 - [Ticket 管理工作台实施计划](12-ticket-management-workbench-plan.md)
 - [HelpDesk 同步与 Ticket 日常管理流程](13-helpdesk-sync-and-ticket-operations.md)
+- [通用客服知识研究工作流](14-general-knowledge-research-workflow.md)
+- [WeKnora 电商知识平台规划](../architecture/weknora-ecommerce-knowledge-platform.md)
+- [WeKnora 本地运行手册](../runbooks/weknora-local.md)
+- [DressAfford 取消与退货政策依据](../policies/dressafford-cancellation-and-return-policy.md)
+- [DressAfford 整单取消常规流程 v2 草案](../policies/dressafford-whole-order-cancellation-flow-v2.md)
 - [Gmail 与 HelpDesk 重合度核对](09-gmail-helpdesk-overlap.md)
 - [邮件模板登记模板](templates/email-template-record.md)
 - [历史 Case 登记模板](templates/case-sample-record.md)
@@ -43,7 +48,7 @@
 - 主要语言：英语。
 - 业务范围意向：覆盖客服收到的售前和售后问题。
 - HelpDesk：已完成 API v1 只读采样，确认 Ticket 包含客户与客服消息、状态、分配和附件事件。
-- ChatBot：真实账号 Token 已配置并完成只读验证；已读取 Story、完整 `diagram` 树、未匹配训练短语和 Chat 样本，当前实际运行的是 `Alberich Bot`。
+- ChatBot：真实账号 Token 已配置并完成只读验证；当前实际运行的是 `Alberich Bot`。截至 2026-10-02 已同步 API 可访问的 400 条 Chat、4,819 个 Event 和 4 个 Story，并登记每 6 小时重读最近 80 条 Chat 的定期任务。继续读取更早页面时 API 返回 403，因此 400 条是当前可访问历史，不等同于账号全部历史。
 - 测试环境：当前未准备；后续计划通过受控线上测试订单完成端到端验证。
 - 取消、退款、改地址、加急和补偿：当前由客服人员判断；客服近期离职，因此流程交接和决策依据沉淀是当前最高优先级。
 

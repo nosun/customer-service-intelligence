@@ -26,6 +26,24 @@ class Conversation extends Model
         return $this->hasMany(ConversationDraft::class);
     }
 
+    public function businessContextSnapshots(): HasMany
+    {
+        return $this->hasMany(BusinessContextSnapshot::class);
+    }
+
+    public function latestCancellationContext(): HasOne
+    {
+        return $this->hasOne(BusinessContextSnapshot::class)
+            ->where('source', 'console_new')
+            ->where('context_type', 'cancellation')
+            ->latestOfMany();
+    }
+
+    public function benchmarkCases(): HasMany
+    {
+        return $this->hasMany(BenchmarkCase::class);
+    }
+
     public function decisionCase(): HasOne
     {
         return $this->hasOne(DecisionCase::class);

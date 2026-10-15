@@ -8,6 +8,7 @@ use App\Models\Conversation;
 use App\Models\ConversationDraft;
 use App\Models\DecisionCase;
 use App\Models\DecisionNode;
+use App\Services\Cancellations\CancellationCaseVerifier;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Layout\Content;
 use Illuminate\Database\Eloquent\Builder;
@@ -64,6 +65,7 @@ class ConversationController extends Controller
             'events' => fn ($query) => $query->with('attachments')->orderBy('occurred_at')->orderBy('id'),
             'decisionCase.nodes.evidence.event',
             'drafts' => fn ($query) => $query->where('status', 'draft')->latest('updated_at'),
+            'latestCancellationContext',
         ])->findOrFail($id);
 
         return $content
@@ -94,6 +96,19 @@ class ConversationController extends Controller
         );
 
         admin_toastr('草稿已保存，仅保存在本地。', 'success');
+
+        return back();
+    }
+
+    public function verifyCancellation(Request $request, int $id, CancellationCaseVerifier $verifier): RedirectResponse
+    {
+        $ticket = Conversation::findOrFail($id);
+        $data = $request->validate([
+            'order_no' => ['nullable', 'string', 'max:100'],
+        ]);
+        $result = $verifier->verify($ticket, $data['order_no'] ?? null);
+        $type = $result['status'] === 'failed' ? 'error' : ($result['status'] === 'not_found' ? 'warning' : 'success');
+        admin_toastr($result['message'], $type);
 
         return back();
     }

@@ -19,6 +19,12 @@ return [
         'base_url' => env('CHATBOT_API_URL', 'https://api.chatbot.com'),
     ],
 
+    'console_new' => [
+        'base_url' => env('CONSOLE_NEW_API_URL'),
+        'token' => env('CONSOLE_NEW_API_TOKEN'),
+        'timeout' => (int) env('CONSOLE_NEW_API_TIMEOUT', 15),
+    ],
+
     'minimax' => [
         'api_key' => env('MINIMAX_API_KEY'),
         'base_url' => env('MINIMAX_API_URL', 'https://api.minimax.io/v1'),

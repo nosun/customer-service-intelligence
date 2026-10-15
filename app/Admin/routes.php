@@ -1,5 +1,6 @@
 <?php
 
+use App\Admin\Controllers\BenchmarkCaseController;
 use App\Admin\Controllers\ChatBotChatController;
 use App\Admin\Controllers\CommerceSiteController;
 use App\Admin\Controllers\ConversationController;
@@ -22,10 +23,18 @@ Route::group([
     $router->get('conversations', [ConversationController::class, 'index'])->name('conversations.index');
     $router->get('conversations/{id}', [ConversationController::class, 'show'])->name('conversations.show');
     $router->post('conversations/{id}/draft', [ConversationController::class, 'storeDraft'])->name('conversations.draft');
+    $router->post('conversations/{id}/verify-cancellation', [ConversationController::class, 'verifyCancellation'])->name('conversations.verify-cancellation');
     $router->post('conversations/{id}/cases/{case}/review', [ConversationController::class, 'reviewCase'])->name('conversations.cases.review');
     $router->post('conversations/{id}/nodes/{node}/review', [ConversationController::class, 'reviewNode'])->name('conversations.nodes.review');
     $router->get('chatbot-chats', [ChatBotChatController::class, 'index'])->name('chatbot-chats.index');
     $router->get('chatbot-chats/{id}', [ChatBotChatController::class, 'show'])->name('chatbot-chats.show');
+    $router->get('benchmark-cases', [BenchmarkCaseController::class, 'index'])->name('benchmark-cases.index');
+    $router->get('benchmark-cases/{id}', [BenchmarkCaseController::class, 'show'])->name('benchmark-cases.show');
+    $router->post('benchmark-cases/{id}/steps', [BenchmarkCaseController::class, 'storeStep'])->name('benchmark-cases.steps.store');
+    $router->put('benchmark-cases/{id}/steps/{stepId}', [BenchmarkCaseController::class, 'updateStep'])->name('benchmark-cases.steps.update');
+    $router->get('benchmark-cases/{id}/steps/{stepId}', [BenchmarkCaseController::class, 'showStep'])->name('benchmark-cases.steps.show');
+    $router->post('benchmark-cases/{id}/steps/{stepId}/annotations', [BenchmarkCaseController::class, 'storeStepAnnotation'])->name('benchmark-cases.steps.annotations.store');
+    $router->post('benchmark-cases/{id}/annotations', [BenchmarkCaseController::class, 'storeAnnotation'])->name('benchmark-cases.annotations.store');
     $router->get('commerce-sites', [CommerceSiteController::class, 'index'])->name('commerce-sites.index');
     $router->get('commerce-sites/create', [CommerceSiteController::class, 'create'])->name('commerce-sites.create');
     $router->post('commerce-sites', [CommerceSiteController::class, 'store'])->name('commerce-sites.store');
