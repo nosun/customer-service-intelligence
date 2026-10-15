@@ -58,3 +58,14 @@
 - 增加本地案例审核界面，支持确认、修正、拒绝和证据回看。
 - 对审核后的同类案例归纳典型情形、冲突做法、规则与处理流程。
 - 执行 ChatBot 历史会话同步，并建立 Chat、Training 和 HelpDesk Ticket 的可审核关联。
+
+## 2026-10-02 至 2026-10-03：Ticket 工作台与同步一致性
+
+- 将 `/admin/conversations` 改造成 HelpDesk 风格的 Ticket 工作台，提供 All recent tickets、Tickets to handle、My open tickets、状态目录和本地分析队列。
+- 增加 Ticket 时间线、附件预览与下载链接、Decision Case 和决策节点审核，以及仅保存在本地的回复草稿。
+- 明确 HelpDesk 的 `silo + status` 关系，并使用 `updatedAt + Ticket ID` 游标分别同步 20 个组合。
+- 将活跃 Ticket 同步提高到每 10 分钟，全部目录每小时同步；Mac 使用 LaunchAgent 持续运行 Laravel Scheduler。
+- 增量检查即使没有新 Ticket，也会记录成功时间和状态；异常时保存同步错误，不推进游标。
+- 实际核对 HelpDesk 线上与本地 20 个目录状态组合，审计结果全部一致。
+- 新增 Ticket 工作台实施计划以及 HelpDesk 同步、审计和日常管理流程文档。
+- Ticket 工作台及同步相关测试通过，Laravel Pint 和 Git whitespace 检查通过。

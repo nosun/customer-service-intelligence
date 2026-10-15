@@ -93,10 +93,17 @@ class SyncHelpDeskIncremental extends Command
                 }
             }
         } catch (Throwable $exception) {
+            $account->update(['sync_status' => 'failed', 'sync_error' => $exception->getMessage()]);
             $this->error($exception->getMessage());
 
             return self::FAILURE;
         }
+
+        $account->update([
+            'sync_status' => 'completed',
+            'sync_error' => null,
+            'last_synced_at' => now(),
+        ]);
 
         $this->line(json_encode($totals, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 

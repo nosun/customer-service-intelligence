@@ -59,6 +59,35 @@ class HelpDeskIncrementalAndAnalysisTest extends TestCase
         });
     }
 
+    public function test_incremental_sync_records_a_successful_empty_check(): void
+    {
+        $account = ChannelAccount::create([
+            'channel' => 'helpdesk',
+            'external_account_id' => '12345',
+            'sync_status' => 'running',
+        ]);
+        ChannelSyncCursor::create([
+            'channel_account_id' => $account->id,
+            'source_resource' => 'tickets',
+            'silo' => 'tickets',
+            'status' => 'open',
+            'sort_by' => 'updatedAt',
+            'cursor_value' => '2026-09-01T10:00:00Z',
+            'cursor_external_id' => 'ticket-1',
+        ]);
+        Http::fake(['*' => Http::response([], 200, ['X-Total-Results' => '0'])]);
+
+        $this->artisan('helpdesk:sync-incremental', [
+            '--silo' => ['tickets'],
+            '--status' => ['open'],
+        ])->assertSuccessful();
+
+        $account->refresh();
+        $this->assertSame('completed', $account->sync_status);
+        $this->assertNotNull($account->last_synced_at);
+        $this->assertNull($account->sync_error);
+    }
+
     public function test_helpdesk_analysis_classifies_customer_messages_and_builds_reply_candidates(): void
     {
         $arguments = ['--fixture' => base_path('tests/fixtures/helpdesk-tickets.json')];

@@ -160,7 +160,7 @@ php artisan helpdesk:sync-incremental
 php artisan helpdesk:audit
 ```
 
-Laravel Scheduler 每小时执行增量同步，并在每天 02:30 重新生成 `tickets + archive` 的规则分类和回复候选：
+Laravel Scheduler 每 10 分钟同步活跃 Ticket，每小时同步全部目录，并在每天 02:30 重新生成 `tickets + archive` 的规则分类和回复候选：
 
 ```bash
 php artisan schedule:list
@@ -170,6 +170,15 @@ php artisan schedule:list
 
 ```cron
 * * * * * cd /path/to/customer-service-intelligence && php artisan schedule:run >> /dev/null 2>&1
+```
+
+当前 Mac 使用仓库内的 LaunchAgent 配置持续运行 Scheduler：
+
+```bash
+cp ops/macos/com.dressafford.customer-service-intelligence.scheduler.plist \
+  ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) \
+  ~/Library/LaunchAgents/com.dressafford.customer-service-intelligence.scheduler.plist
 ```
 
 手动运行 HelpDesk 分类和回复候选提取：

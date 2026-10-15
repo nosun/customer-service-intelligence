@@ -18,6 +18,8 @@
 - [Alberich Bot Story 初步分析](09-alberich-story-analysis.md)
 - [ChatBot 能力边界与演进方案](10-chatbot-capability-and-evolution.md)
 - [决策案例与客服策略学习实施计划](11-decision-case-and-policy-learning-plan.md)
+- [Ticket 管理工作台实施计划](12-ticket-management-workbench-plan.md)
+- [HelpDesk 同步与 Ticket 日常管理流程](13-helpdesk-sync-and-ticket-operations.md)
 - [Gmail 与 HelpDesk 重合度核对](09-gmail-helpdesk-overlap.md)
 - [邮件模板登记模板](templates/email-template-record.md)
 - [历史 Case 登记模板](templates/case-sample-record.md)

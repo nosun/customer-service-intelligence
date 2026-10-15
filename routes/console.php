@@ -8,8 +8,13 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Schedule::command('helpdesk:sync-incremental --silo=tickets')
+    ->everyTenMinutes()
+    ->timezone('Asia/Shanghai')
+    ->withoutOverlapping(10);
+
 Schedule::command('helpdesk:sync-incremental')
-    ->hourly()
+    ->hourlyAt(5)
     ->timezone('Asia/Shanghai')
     ->withoutOverlapping(30);
 

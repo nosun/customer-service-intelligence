@@ -10,6 +10,7 @@ return [
         'account_id' => env('HELPDESK_ACCOUNT_ID'),
         'personal_access_token' => env('HELPDESK_PERSONAL_ACCESS_TOKEN'),
         'base_url' => env('HELPDESK_API_URL', 'https://api.helpdesk.com'),
+        'current_agent_id' => env('HELPDESK_CURRENT_AGENT_ID'),
     ],
 
     'chatbot' => [

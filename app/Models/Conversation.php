@@ -21,6 +21,16 @@ class Conversation extends Model
         return $this->hasMany(ConversationEvent::class);
     }
 
+    public function drafts(): HasMany
+    {
+        return $this->hasMany(ConversationDraft::class);
+    }
+
+    public function decisionCase(): HasOne
+    {
+        return $this->hasOne(DecisionCase::class);
+    }
+
     public function analysis(): HasOne
     {
         return $this->hasOne(ConversationAnalysis::class);

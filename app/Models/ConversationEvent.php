@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ConversationEvent extends Model
 {
@@ -12,6 +13,11 @@ class ConversationEvent extends Model
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(ConversationAttachment::class);
     }
 
     protected function casts(): array
