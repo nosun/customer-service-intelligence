@@ -25,7 +25,11 @@ class ProductQuestionPolicyController extends Controller
             ->whereHas('run', fn ($runs) => $runs->whereIn('status', ['completed', 'completed_with_errors']))
             ->latest('id');
         if (! $request->boolean('all_versions')) {
-            $query->whereHas('run', fn ($runs) => $runs->where('prompt_version', ProductQuestionPolicyPrompt::VERSION));
+            $query->where(function ($candidates): void {
+                $candidates
+                    ->where('review_status', 'confirmed')
+                    ->orWhereHas('run', fn ($runs) => $runs->whereIn('prompt_version', ProductQuestionPolicyPrompt::REVIEWABLE_VERSIONS));
+            });
         }
         if ($request->filled('site_id')) {
             $query->where('commerce_site_id', $request->integer('site_id'));

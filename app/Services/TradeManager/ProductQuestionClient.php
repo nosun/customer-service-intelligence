@@ -28,6 +28,15 @@ class ProductQuestionClient
     }
 
     /** @return array<string, mixed> */
+    public function productEta(CommerceSite $site, string $sn, string $countryCode): array
+    {
+        return $this->data($this->readRequest($site)->get(
+            'products/'.rawurlencode($sn).'/eta',
+            ['country' => strtoupper($countryCode)],
+        ));
+    }
+
+    /** @return array<string, mixed> */
     public function previewReply(CommerceSite $site, int $questionId, array $payload): array
     {
         return $this->data($this->request($site)->patch(

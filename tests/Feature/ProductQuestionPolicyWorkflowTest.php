@@ -33,6 +33,18 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_policy_prompt_requires_site_placeholders_and_canonical_english_templates(): void
+    {
+        $prompt = app(ProductQuestionPolicyPrompt::class)->system();
+
+        $this->assertStringContainsString('{{ site.public_base_url }}', $prompt);
+        $this->assertStringContainsString('{{ site.customer_service_email }}', $prompt);
+        $this->assertStringContainsString('{{ site.brand_name }}', $prompt);
+        $this->assertStringContainsString('canonical English template', $prompt);
+        $this->assertStringContainsString("translate that completed response into the customer's language", $prompt);
+        $this->assertStringContainsString('Do not create mixed-language or per-language policy templates', $prompt);
+    }
+
     public function test_synthesizer_groups_analyses_into_auditable_policy_candidate(): void
     {
         $site = $this->site();
@@ -136,6 +148,24 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
             ...$this->strategy([1]),
             'title' => '旧试验候选',
         ]);
+        ProductQuestionPolicyCandidate::create([
+            'product_question_policy_run_id' => $oldRun->id,
+            'commerce_site_id' => $site->id,
+            ...$this->strategy([1], 'ask_size_recommendation'),
+            'title' => '旧版本已确认策略',
+            'review_status' => 'confirmed',
+        ]);
+        $reviewableRun = $oldRun->replicate()->fill([
+            'batch_key' => 'reviewable-v3-policy-test',
+            'prompt_version' => 'product-question-policy-research-v3',
+        ]);
+        $reviewableRun->save();
+        ProductQuestionPolicyCandidate::create([
+            'product_question_policy_run_id' => $reviewableRun->id,
+            'commerce_site_id' => $site->id,
+            ...$this->strategy([1]),
+            'title' => '上一稳定版待审核策略',
+        ]);
         $currentRun = $oldRun->replicate()->fill([
             'batch_key' => 'current-policy-test',
             'prompt_version' => ProductQuestionPolicyPrompt::VERSION,
@@ -151,6 +181,8 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
         $this->get('/admin/product-question-policies')
             ->assertOk()
             ->assertSee('当前候选')
+            ->assertSee('上一稳定版待审核策略')
+            ->assertSee('旧版本已确认策略')
             ->assertDontSee('旧试验候选');
         $this->get('/admin/product-question-policies?all_versions=1')
             ->assertOk()

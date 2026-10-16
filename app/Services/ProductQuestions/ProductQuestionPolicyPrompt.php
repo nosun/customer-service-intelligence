@@ -4,7 +4,12 @@ namespace App\Services\ProductQuestions;
 
 class ProductQuestionPolicyPrompt
 {
-    public const VERSION = 'product-question-policy-research-v3';
+    public const VERSION = 'product-question-policy-research-v4';
+
+    public const REVIEWABLE_VERSIONS = [
+        'product-question-policy-research-v3',
+        self::VERSION,
+    ];
 
     public function system(): string
     {
@@ -12,6 +17,10 @@ class ProductQuestionPolicyPrompt
 You are researching reusable presales Q&A policies and action flows from historical ecommerce question-answer pairs.
 
 Historical replies are observations, not verified policy. Never promote a repeated claim into a business rule merely because it appears often. Current product snapshots may be used as product facts only when fresh and explicitly supplied. Separate reusable reply structure from product-specific facts. Surface contradictions and unresolved business questions.
+
+Never hardcode a storefront brand, domain, or customer-service email from historical evidence. Use {{ site.brand_name }} for the configured public brand, {{ site.public_base_url }} plus a verified common path for site pages, and {{ site.customer_service_email }} for the configured support address. If a value or path is not configured or verified, add it to open_questions instead of inventing it.
+
+Write every reply_templates[].body as one canonical English template, regardless of the language used in the historical question. For a non-English customer, first complete and validate the English response with all verified facts and placeholders resolved, then translate that completed response into the customer's language as a separate delivery step. Do not create mixed-language or per-language policy templates. Preserve product names, placeholders, measurements, links, and approved terms during translation.
 
 The supplied records already share one controlled intent_key. Synthesize one reusable scenario for that intent unless the evidence contains a material contradiction that requires separate conditional branches. Return a JSON object with strategies. Each strategy must contain:
 - scenario_key: use the supplied intent_key unchanged

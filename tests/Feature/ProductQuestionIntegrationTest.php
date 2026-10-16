@@ -29,19 +29,25 @@ class ProductQuestionIntegrationTest extends TestCase
 
         $this->post('/admin/commerce-sites', [
             'name' => 'DressAfford',
+            'brand_name' => 'Dress Afford',
             'site_key' => 'dressafford',
             'admin_api_url' => 'https://dressafford.test/api/admin',
             'public_base_url' => 'https://www.dressafford.test',
+            'customer_service_email' => 'support@dressafford.test',
             'api_token' => 'adm_super_secret',
             'enabled' => '1',
         ])->assertRedirect('/admin/commerce-sites');
 
         $site = CommerceSite::firstOrFail();
         $this->assertSame('adm_super_secret', $site->api_token);
+        $this->assertSame('Dress Afford', $site->brand_name);
         $this->assertSame('https://www.dressafford.test', $site->public_base_url);
+        $this->assertSame('support@dressafford.test', $site->customer_service_email);
         $this->assertNotSame('adm_super_secret', DB::table('commerce_sites')->value('api_token'));
         $this->get("/admin/commerce-sites/{$site->id}/edit")
             ->assertOk()
+            ->assertSee('Dress Afford')
+            ->assertSee('support@dressafford.test')
             ->assertDontSee('adm_super_secret');
 
         $operationInputs = DB::table(config('admin.database.operation_log_table'))->pluck('input')->implode('\n');
@@ -184,6 +190,41 @@ class ProductQuestionIntegrationTest extends TestCase
             $this->assertSame('FORBIDDEN', $exception->errorCode);
             $this->assertSame('req-forbidden', $exception->requestId);
         }
+    }
+
+    public function test_client_reads_product_eta_for_the_configured_site_and_country(): void
+    {
+        $site = $this->site();
+        Http::fake(['*' => Http::response([
+            'success' => true,
+            'code' => 'OK',
+            'message' => 'ok',
+            'data' => [
+                'product' => ['sn' => 'QA/100', 'name' => 'Test Dress'],
+                'country' => ['code' => 'US', 'supported' => true],
+                'fast_dispatch' => ['mode' => 'none', 'selection_required' => false],
+                'options' => [[
+                    'key' => 'level-3',
+                    'available' => false,
+                    'unavailable_reason' => 'rush_temporarily_unavailable',
+                    'shipping_methods' => [],
+                ]],
+            ],
+            'request_id' => 'req-eta',
+        ])]);
+
+        $eta = app(ProductQuestionClient::class)->productEta($site, 'QA/100', 'us');
+
+        $this->assertSame('QA/100', $eta['product']['sn']);
+        $this->assertFalse($eta['options'][0]['available']);
+        Http::assertSent(function (Request $request): bool {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?: '', $query);
+
+            return $request->method() === 'GET'
+                && str_contains($request->url(), '/products/QA%2F100/eta?')
+                && ! isset($query['site'])
+                && ($query['country'] ?? null) === 'US';
+        });
     }
 
     public function test_full_sync_saves_every_page_preserves_analysis_and_marks_missing_records(): void
