@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\AiWorkflow;
+use App\Services\ProductQuestions\ProductQuestionDraftReleaseGate;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -15,11 +16,12 @@ class RegisterN8nWorkflow extends Command
                             {file : Exported n8n workflow JSON}
                             {--status=evaluating : experimental, evaluating, active, or deprecated}
                             {--n8n-id= : n8n workflow ID}
-                            {--prompt-version= : Prompt version used by the workflow}';
+                            {--prompt-version= : Prompt version used by the workflow}
+                            {--release-report= : Required passing replay report when status is active}';
 
     protected $description = 'Register an exported n8n workflow definition and checksum in Laravel';
 
-    public function handle(): int
+    public function handle(ProductQuestionDraftReleaseGate $gate): int
     {
         $path = realpath((string) $this->argument('file'));
         if ($path === false || ! is_file($path)) {
@@ -36,7 +38,23 @@ class RegisterN8nWorkflow extends Command
 
         $key = (string) $this->argument('key');
         $version = (string) $this->argument('version');
-        $workflow = DB::transaction(function () use ($definition, $key, $status, $version): AiWorkflow {
+        $definitionChecksum = hash('sha256', $definition);
+        $report = null;
+        if ($status === 'active') {
+            $reportPath = trim((string) $this->option('release-report'));
+            if ($reportPath === '') {
+                throw new RuntimeException('--release-report is required when activating a workflow.');
+            }
+            $report = $gate->readReport($reportPath);
+            $gate->assertAllowsActivation(
+                $report,
+                $key,
+                $version,
+                $definitionChecksum,
+                hash_file('sha256', resource_path('data/product-question-draft-replay-v1.json')),
+            );
+        }
+        $workflow = DB::transaction(function () use ($definitionChecksum, $key, $report, $status, $version): AiWorkflow {
             if ($status === 'active') {
                 AiWorkflow::query()
                     ->where('workflow_key', $key)
@@ -56,8 +74,9 @@ class RegisterN8nWorkflow extends Command
                 [
                     'n8n_workflow_id' => $this->option('n8n-id') ?: null,
                     'prompt_version' => $this->option('prompt-version') ?: null,
-                    'definition_checksum' => hash('sha256', $definition),
+                    'definition_checksum' => $definitionChecksum,
                     'status' => $status,
+                    'replay_metrics' => $report['metrics'] ?? null,
                     'published_at' => $status === 'active' ? now() : null,
                     'deprecated_at' => $status === 'deprecated' ? now() : null,
                 ],

@@ -468,7 +468,7 @@ git diff --check passed
 
 ### 2026-10-17 n8n Phase 0 落地
 
-已在同级目录 `../n8n` 落地本地 n8n 服务和两个可导入工作流：
+已在仓库内 `n8n/` 落地并纳入版本控制的本地 n8n 服务和两个可导入工作流：
 
 - `analysis__qa-analysis-v1`：租取问答并调用现有 `ProductQuestionAnalyzer`；
 - `work__qa-draft-v1`：早期批量工作流，租取未回复问答并调用现有 `ProductQuestionDraftGenerator`；后台当前使用下文的 Agent 工作流。
@@ -492,19 +492,21 @@ P0/P1 稳定化已经完成：
 发布命令：
 
 ```bash
-php artisan n8n:register-workflow work/qa-draft-agent-v1 1.1.0 ../n8n/workflows/work__qa-draft-agent-v1.json \
-  --status=active --n8n-id=HMj4IB3pA7uhmZFW --prompt-version=n8n-qa-draft-agent-v3
+php artisan n8n:register-workflow work/qa-draft-agent-v1 1.1.0 n8n/workflows/work__qa-draft-agent-v1.json \
+  --status=active --n8n-id=HMj4IB3pA7uhmZFW --prompt-version=n8n-qa-draft-agent-v3 \
+  --release-report=storage/app/product-question-replays/1.1.0-release-report.json
 ```
 
 回放命令：
 
 ```bash
-php artisan product-questions:evaluate-draft-replay predictions.json
+php artisan product-questions:run-n8n-draft-replay --site=dressafford --product-sn=<stable-product-sn>
+php artisan product-questions:gate-draft-release predictions.json --annotations=review.json --report=release-report.json
 ```
 
 `predictions.json` 以案例 `id` 为键，至少提供 `status`、`intents`、`answer_en`、`duration_ms`，可选 `cost`、`fact_error`、`policy_violation` 和 `accepted_as_is`。
 
-本地 `work__qa-draft-agent-v1` 已导入并激活，n8n 只监听 `127.0.0.1:5678`，Webhook 使用独立 Token；AI 节点有有限重试和 120 秒单次超时。运行说明见 `../n8n/README.md`。这些结果仍是本地验收，不代表已经部署生产。
+本地 `work__qa-draft-agent-v1` 已导入并激活，n8n 只监听 `127.0.0.1:5678`，Webhook 使用独立 Token；AI 节点有有限重试和 120 秒单次超时。运行说明见 `n8n/README.md`。这些结果仍是本地验收，不代表已经部署生产。
 
 真实问题反复验收结果：
 
@@ -528,6 +530,10 @@ php artisan product-questions:evaluate-draft-replay predictions.json
 - 成熟后再评估把关键长流程迁移到 Temporal。
 
 同时按工作中心与分析中心的边界开始收敛代码：新功能必须先明确归属，跨中心只通过版本化契约连接；实验能力必须具备评估和退出机制，避免继续增加单体内部耦合。
+
+后续 P0/P1 补强：n8n 目录已移入仓库并与 Laravel 同版本提交；真实 Workflow 回放 Runner 通过 Webhook 生成含 Execution ID 的预测和人工复核模板；发布门禁将 Workflow definition checksum、回放集 checksum、完整预测、人工事实/Policy 复核和质量阈值绑定，`active` 注册必须提供通过报告。新增 Draft Workflow 健康报告与人工修改反馈报告。Policy 高频修改改为后台创建 Draft 版本、人工发布或驳回，并保留不可变版本快照；不再要求为每次措辞调整新增数据迁移。
+
+Workflow `1.1.0` 已通过真实 n8n Webhook 完成 50/50 回放，Workflow 层没有失败；人工逐条复核后发布门禁按预期拒绝该版本：无修改采用率 52%，漏意图率 46%，错误放行必须阻止案例 8%，事实错误率 6%，Policy 违规率 44%，p50 49 秒、p95 76 秒。主要缺口是回放集中尚未具备对应 Policy/事实的意图、分类标签与现有 verified Policy 不一致、多意图回复遗漏，以及回复中重复商品标识或承诺不存在的后续人工动作。完整门禁摘要见 `docs/reviews/2026-10-17-n8n-draft-replay-1.1.0-report.json`；原始预测和人工标注保存在本地 `storage/app/product-question-replays/`，未进入 Git。
 
 具体实施方案见：
 

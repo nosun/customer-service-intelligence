@@ -28,6 +28,8 @@ class ProductQuestionDraftReplaySuiteTest extends TestCase
 
         $this->assertSame(50, $metrics['suite_size']);
         $this->assertSame(2, $metrics['evaluated']);
+        $this->assertSame(0.04, $metrics['prediction_coverage']);
+        $this->assertSame(0.0, $metrics['quality_review_coverage']);
         $this->assertSame(0.5, $metrics['missed_intent_rate']);
         $this->assertSame(0.5, $metrics['missed_required_block_rate']);
         $this->assertSame(100.0, $metrics['p50_duration_ms']);
@@ -51,5 +53,6 @@ class ProductQuestionDraftReplaySuiteTest extends TestCase
         $this->assertSame(0.02, $metrics['policy_violation_rate']);
         $this->assertSame(0.0, $metrics['false_block_rate']);
         $this->assertSame(0.0, $metrics['missed_required_block_rate']);
+        $this->assertSame(1.0, $metrics['quality_review_coverage']);
     }
 }

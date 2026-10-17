@@ -9,8 +9,12 @@ use App\Models\ProductQuestion;
 class ProductQuestionDraftInput
 {
     /** @return array{hash:string,snapshot:array<string,mixed>} */
-    public function capture(ProductQuestion $question): array
-    {
+    public function capture(
+        ProductQuestion $question,
+        string $workflowKey = N8nProductQuestionDraftService::WORKFLOW_KEY,
+        string $workflowVersion = N8nProductQuestionDraftService::WORKFLOW_VERSION,
+        string $promptVersion = N8nProductQuestionDraftService::PROMPT_VERSION,
+    ): array {
         $question->loadMissing('site', 'analysis');
         $product = CommerceProduct::query()
             ->where('commerce_site_id', $question->commerce_site_id)
@@ -61,9 +65,9 @@ class ProductQuestionDraftInput
             ],
             'policies' => $policies,
             'workflow' => [
-                'key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
-                'version' => N8nProductQuestionDraftService::WORKFLOW_VERSION,
-                'prompt_version' => N8nProductQuestionDraftService::PROMPT_VERSION,
+                'key' => $workflowKey,
+                'version' => $workflowVersion,
+                'prompt_version' => $promptVersion,
                 'provider' => 'minimax',
                 'model' => (string) config('services.minimax.model'),
             ],

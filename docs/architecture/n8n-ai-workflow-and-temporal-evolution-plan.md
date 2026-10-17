@@ -757,7 +757,7 @@ Laravel
 
 当前实现状态（2026-10-17）：
 
-- 已在 `../n8n/compose.yaml` 固定 n8n 镜像和本地持久卷；
+- 已在仓库内 `n8n/compose.yaml` 固定 n8n 镜像和本地持久卷，Workflow JSON 与应用代码一并版本化；
 - 已提供 `analysis__qa-analysis-v1`，并已导入、激活 `work__qa-draft-agent-v1`；
 - 已实现 Laravel Internal API、独立 Token、输入校验、Execution 关联和幂等；
 - 后台生成 Draft 已异步触发 n8n；Planner、受控事实解析、verified Policy 检索、英文 Writer、目标语言翻译和 Reviewer/Repair 已成为可观察的独立节点；
@@ -777,6 +777,8 @@ Laravel
 - 每次变更自动输出指标；
 - 关键事实错误为零；
 - 必须 blocked 的案例全部被阻止。
+
+当前实现已提供真实 Webhook 回放 Runner 和发布门禁：候选 Workflow 先注册为 `evaluating`，完整运行固定回放集并保存 Execution ID、事实、Policy、Draft 和耗时，再由人工逐条标注事实错误与 Policy 违规。门禁通过后生成绑定 Workflow checksum 与 Suite checksum 的报告；Registry 只有拿到匹配的通过报告才允许切换为 `active`。
 
 ### Phase 2：小批量自动 Draft
 

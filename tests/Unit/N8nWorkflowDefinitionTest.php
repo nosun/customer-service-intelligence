@@ -8,7 +8,7 @@ class N8nWorkflowDefinitionTest extends TestCase
 {
     public function test_draft_workflow_has_separate_review_repair_and_final_review_nodes(): void
     {
-        $path = base_path('../n8n/workflows/work__qa-draft-agent-v1.json');
+        $path = base_path('n8n/workflows/work__qa-draft-agent-v1.json');
         $workflow = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
         $nodes = collect($workflow['nodes'])->keyBy('name');
 

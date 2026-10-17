@@ -20,4 +20,18 @@ class WorkflowRegistry
 
         return $workflow;
     }
+
+    public function runnable(string $key, string $version): AiWorkflow
+    {
+        $workflow = AiWorkflow::query()
+            ->where('workflow_key', $key)
+            ->where('workflow_version', $version)
+            ->first();
+
+        if ($workflow === null || ! in_array($workflow->status, ['evaluating', 'active'], true)) {
+            throw new RuntimeException("Workflow {$key}@{$version} is not runnable.");
+        }
+
+        return $workflow;
+    }
 }

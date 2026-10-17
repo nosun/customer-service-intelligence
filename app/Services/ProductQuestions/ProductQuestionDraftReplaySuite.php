@@ -36,6 +36,8 @@ class ProductQuestionDraftReplaySuite
         $missedBlock = 0;
         $factErrors = 0;
         $policyViolations = 0;
+        $qualityReviewed = 0;
+        $workflowFailures = 0;
         $accepted = 0;
         $durations = [];
         $cost = 0.0;
@@ -49,14 +51,18 @@ class ProductQuestionDraftReplaySuite
             $blocked = array_key_exists('blocked', $prediction)
                 ? (bool) $prediction['blocked']
                 : ($prediction['status'] ?? null) === 'blocked';
+            $workflowFailures += in_array(($prediction['status'] ?? null), ['failed', 'stale', 'timed_out'], true) ? 1 : 0;
             $ready += $blocked ? 0 : 1;
             $expected = (array) ($case['expected_intents'] ?? []);
             $actual = (array) ($prediction['intents'] ?? []);
             $missedIntent += array_diff($expected, $actual) === [] ? 0 : 1;
             $falseBlock += ! $case['must_block'] && $blocked ? 1 : 0;
             $missedBlock += $case['must_block'] && ! $blocked ? 1 : 0;
-            $factErrors += (int) ($prediction['fact_errors'] ?? $prediction['fact_error'] ?? 0);
-            $policyViolations += (int) ($prediction['policy_violations'] ?? $prediction['policy_violation'] ?? 0);
+            $factReview = $prediction['fact_errors'] ?? $prediction['fact_error'] ?? null;
+            $policyReview = $prediction['policy_violations'] ?? $prediction['policy_violation'] ?? null;
+            $factErrors += is_numeric($factReview) ? (int) $factReview : 0;
+            $policyViolations += is_numeric($policyReview) ? (int) $policyReview : 0;
+            $qualityReviewed += is_numeric($factReview) && is_numeric($policyReview) ? 1 : 0;
             $accepted += (bool) ($prediction['accepted_as_is'] ?? false) ? 1 : 0;
             $cost += (float) ($prediction['cost'] ?? 0);
             if (is_numeric($prediction['duration_ms'] ?? null)) {
@@ -69,6 +75,9 @@ class ProductQuestionDraftReplaySuite
         return [
             'suite_size' => $cases->count(),
             'evaluated' => $evaluated,
+            'prediction_coverage' => $this->rate($evaluated, $cases->count()),
+            'quality_review_coverage' => $this->rate($qualityReviewed, $evaluated),
+            'workflow_failure_rate' => $this->rate($workflowFailures, $evaluated),
             'ready_rate' => $this->rate($ready, $evaluated),
             'accept_as_is_rate' => $this->rate($accepted, $evaluated),
             'missed_intent_rate' => $this->rate($missedIntent, $evaluated),

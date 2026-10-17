@@ -5,6 +5,7 @@ use App\Admin\Controllers\ChatBotChatController;
 use App\Admin\Controllers\CommerceSiteController;
 use App\Admin\Controllers\ConversationController;
 use App\Admin\Controllers\HomeController;
+use App\Admin\Controllers\KnowledgeArticleController;
 use App\Admin\Controllers\ProductQuestionController;
 use App\Admin\Controllers\ProductQuestionFactoryCapabilityController;
 use App\Admin\Controllers\ProductQuestionPolicyController;
@@ -53,4 +54,9 @@ Route::group([
     $router->get('product-question-policies', [ProductQuestionPolicyController::class, 'index'])->name('product-question-policies.index');
     $router->get('product-question-policies/{id}', [ProductQuestionPolicyController::class, 'show'])->name('product-question-policies.show');
     $router->post('product-question-policies/{id}/review', [ProductQuestionPolicyController::class, 'review'])->name('product-question-policies.review');
+    $router->get('knowledge-articles', [KnowledgeArticleController::class, 'index'])->name('knowledge-articles.index');
+    $router->get('knowledge-articles/{knowledgeArticle}', [KnowledgeArticleController::class, 'show'])->name('knowledge-articles.show');
+    $router->post('knowledge-articles/{knowledgeArticle}/versions', [KnowledgeArticleController::class, 'storeDraft'])->name('knowledge-articles.versions.store');
+    $router->post('knowledge-articles/{knowledgeArticle}/versions/{version}/publish', [KnowledgeArticleController::class, 'publish'])->name('knowledge-articles.versions.publish');
+    $router->post('knowledge-articles/{knowledgeArticle}/versions/{version}/reject', [KnowledgeArticleController::class, 'reject'])->name('knowledge-articles.versions.reject');
 });

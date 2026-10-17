@@ -29,7 +29,7 @@ class N8nProductQuestionDraftService
     /** @return array<string, mixed> */
     public function start(ProductQuestionDraftRequest $request, string $executionId): array
     {
-        $this->workflows->active(self::WORKFLOW_KEY, self::WORKFLOW_VERSION);
+        $workflow = $this->workflows->runnable($request->workflow_key, $request->workflow_version);
         $request->loadMissing('question.site', 'question.analysis');
         if ($request->status === 'completed') {
             return ['already_completed' => true, 'draft_id' => $request->product_question_draft_id];
@@ -40,7 +40,12 @@ class N8nProductQuestionDraftService
         if (! in_array($request->status, ['queued', 'running'], true)) {
             throw new RuntimeException('Draft request cannot be started from its current status.');
         }
-        $currentInput = $this->input->capture($request->question);
+        $currentInput = $this->input->capture(
+            $request->question,
+            $request->workflow_key,
+            $request->workflow_version,
+            $workflow->prompt_version ?: self::PROMPT_VERSION,
+        );
         if ($request->input_hash === null) {
             $request->update(['input_hash' => $currentInput['hash'], 'input_snapshot' => $currentInput['snapshot']]);
             $request->refresh();
@@ -110,7 +115,13 @@ class N8nProductQuestionDraftService
     {
         $plan = $this->validatedPlan($request->question, $plan);
         $resolved = $this->facts->resolve($request->question, $plan);
-        $currentInput = $this->input->capture($request->question->fresh());
+        $workflow = $this->workflows->runnable($request->workflow_key, $request->workflow_version);
+        $currentInput = $this->input->capture(
+            $request->question->fresh(),
+            $request->workflow_key,
+            $request->workflow_version,
+            $workflow->prompt_version ?: self::PROMPT_VERSION,
+        );
         $request->update(['input_hash' => $currentInput['hash'], 'input_snapshot' => $currentInput['snapshot']]);
 
         return ['plan' => $plan, 'input_hash' => $currentInput['hash'], ...$resolved];
@@ -153,12 +164,18 @@ class N8nProductQuestionDraftService
         if ($request->status !== 'running') {
             throw new RuntimeException('Draft request is not running.');
         }
+        $workflow = $this->workflows->runnable($request->workflow_key, $request->workflow_version);
 
         $question = $request->question()->with('site')->firstOrFail();
         if (! $question->remote_present || $question->reply_status !== 'unanswered') {
             $this->markStale($request, 'Question is no longer online and unanswered.');
         }
-        $currentInput = $this->input->capture($question);
+        $currentInput = $this->input->capture(
+            $question,
+            $request->workflow_key,
+            $request->workflow_version,
+            $workflow->prompt_version ?: self::PROMPT_VERSION,
+        );
         if ($request->input_hash === null) {
             $request->update(['input_hash' => $currentInput['hash'], 'input_snapshot' => $currentInput['snapshot']]);
             $request->refresh();
@@ -231,13 +248,14 @@ class N8nProductQuestionDraftService
             $safetyFlags,
             $knowledgeArticleIds,
             $status,
+            $workflow,
         ): ProductQuestionDraft {
             $draft = ProductQuestionDraft::create([
                 'product_question_id' => $question->id,
                 'status' => $status,
                 'provider' => 'minimax',
                 'model' => (string) ($payload['model'] ?? config('services.minimax.model')),
-                'prompt_version' => self::PROMPT_VERSION,
+                'prompt_version' => $workflow->prompt_version ?: self::PROMPT_VERSION,
                 'intents' => $plan['intents'],
                 'knowledge_article_ids' => $knowledgeArticleIds,
                 'facts' => $facts,

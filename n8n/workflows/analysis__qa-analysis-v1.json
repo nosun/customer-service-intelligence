@@ -1,0 +1,67 @@
+{
+  "name": "analysis__qa-analysis-v1",
+  "id": "97ZWlSbUUKkIcp9f",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "12acfa80-0f80-4c69-a345-a0d90fb13f9c",
+      "name": "When clicking Execute workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-560, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/product-question-analysis/lease' }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + $env.LARAVEL_INTERNAL_API_TOKEN }}"}]},
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ site_key: $env.PRODUCT_QUESTION_SITE_KEY, limit: Number($env.PRODUCT_QUESTION_EXTERNAL_ID || 0) > 0 ? 1 : 10, reply_status: 'unanswered', ...(Number($env.PRODUCT_QUESTION_EXTERNAL_ID || 0) > 0 ? { question_ids: [Number($env.PRODUCT_QUESTION_EXTERNAL_ID)] } : {}) }) }}",
+        "options": {"timeout": 30000}
+      },
+      "id": "a68ab792-9cbd-4f9b-955d-2fbc4903c753",
+      "name": "Lease analysis items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-320, 0]
+    },
+    {
+      "parameters": {"fieldToSplitOut": "data", "options": {}},
+      "id": "4ba5cb3a-adbf-4d9f-878a-1d84415194f4",
+      "name": "One question per item",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [-80, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/product-questions/' + $json.question_id + '/analyze' }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + $env.LARAVEL_INTERNAL_API_TOKEN }}"}]},
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ workflow_key: 'analysis/qa-analysis-v1', workflow_version: '1.0.0', execution_id: $execution.id }) }}",
+        "options": {"timeout": 240000}
+      },
+      "id": "5ec79079-1750-438b-8bf6-2f458bdd8bc4",
+      "name": "Analyze question",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [160, 0]
+    }
+  ],
+  "connections": {
+    "When clicking Execute workflow": {"main": [[{"node": "Lease analysis items", "type": "main", "index": 0}]]},
+    "Lease analysis items": {"main": [[{"node": "One question per item", "type": "main", "index": 0}]]},
+    "One question per item": {"main": [[{"node": "Analyze question", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "saveDataErrorExecution": "all", "saveDataSuccessExecution": "all"},
+  "tags": [],
+  "meta": {"templateCredsSetupCompleted": true}
+}

@@ -7,6 +7,7 @@
     <h4>按策略场景审核</h4>
     <p>系统先自动分析历史问答，再把相似问题归纳为少量策略。默认仅显示当前成熟版本（{{ $currentVersion }}），不需要逐条审核历史问答。</p>
     @if(!($filters['all_versions'] ?? false))<p><a href="{{ request()->fullUrlWithQuery(['all_versions' => 1]) }}">显示历史试验批次</a></p>@endif
+    <p><a class="btn btn-default btn-sm" href="{{ admin_url('knowledge-articles') }}">管理已发布 Policy 版本</a></p>
 </div>
 
 <div class="box box-primary"><div class="box-body">

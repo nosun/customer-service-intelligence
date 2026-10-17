@@ -45,7 +45,7 @@
             <p>证据：{{ count($candidate->evidence_question_ids) }} 条</p>
             <p>批次：{{ $candidate->run->batch_key }}</p>
             <p>来源假设：{{ $candidate->run->source_assumption ?: '未设置' }}</p>
-            @if($candidate->knowledgeArticle)<p class="text-success">已发布知识：{{ $candidate->knowledgeArticle->key }} v{{ $candidate->knowledgeArticle->version }}</p>@endif
+            @if($candidate->knowledgeArticle)<p class="text-success">已发布知识：<a href="{{ admin_url('knowledge-articles/'.$candidate->knowledgeArticle->id) }}">{{ $candidate->knowledgeArticle->key }} v{{ $candidate->knowledgeArticle->version }}</a></p>@endif
         </div></div>
     </div>
 </div>

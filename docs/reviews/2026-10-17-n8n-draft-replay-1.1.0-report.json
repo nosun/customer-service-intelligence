@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-17T11:46:05+00:00",
+  "workflow": {
+    "key": "work/qa-draft-agent-v1",
+    "version": "1.1.0",
+    "definition_checksum": "fb5aa01bb6ef2acd57d19ea76d086b1608c69fadbc6c567d0b7b7243d527e9bd"
+  },
+  "suite": {
+    "path": "resources/data/product-question-draft-replay-v1.json",
+    "checksum": "674982abc399f70425ddb0418f821f6b1dae73907a609779fba0d2a6aaf995fa",
+    "size": 50
+  },
+  "predictions": {
+    "path": "storage/app/product-question-replays/1.1.0-predictions.json",
+    "checksum": "b2cb317d7adf3e9dba16d0d99a556c727cdb0abb4c5319267c421fa198b013e5"
+  },
+  "metrics": {
+    "suite_size": 50,
+    "evaluated": 50,
+    "prediction_coverage": 1,
+    "quality_review_coverage": 1,
+    "workflow_failure_rate": 0,
+    "ready_rate": 0.54,
+    "accept_as_is_rate": 0.52,
+    "missed_intent_rate": 0.46,
+    "false_block_rate": 0.16,
+    "missed_required_block_rate": 0.08,
+    "fact_error_rate": 0.06,
+    "policy_violation_rate": 0.44,
+    "cost_per_draft": 0,
+    "p50_duration_ms": 49000,
+    "p95_duration_ms": 76000
+  },
+  "passed": false,
+  "failures": [
+    "fact_error_rate=0.06 requires <=0",
+    "policy_violation_rate=0.44 requires <=0",
+    "missed_required_block_rate=0.08 requires <=0",
+    "missed_intent_rate=0.46 requires <=0.02"
+  ],
+  "thresholds": {
+    "prediction_coverage": 1,
+    "quality_review_coverage": 1,
+    "workflow_failure_rate": 0,
+    "fact_error_rate": 0,
+    "policy_violation_rate": 0,
+    "missed_required_block_rate": 0,
+    "missed_intent_rate": 0.02
+  }
+}

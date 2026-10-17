@@ -18,10 +18,16 @@ class N8nProductQuestionDraftController extends Controller
     ): JsonResponse {
         $input = $httpRequest->validate([
             'execution_id' => ['required', 'string', 'max:255'],
-            'workflow_key' => ['required', 'in:'.N8nProductQuestionDraftService::WORKFLOW_KEY],
-            'workflow_version' => ['required', 'in:'.N8nProductQuestionDraftService::WORKFLOW_VERSION],
+            'workflow_key' => ['required', 'string', 'max:255'],
+            'workflow_version' => ['required', 'string', 'max:100'],
         ]);
         $request = $this->draftRequest($requestId);
+        abort_unless(
+            hash_equals($request->workflow_key, $input['workflow_key'])
+                && hash_equals($request->workflow_version, $input['workflow_version']),
+            409,
+            'Workflow identity does not match the Draft request.',
+        );
 
         return response()->json(['context' => $service->start($request, $input['execution_id'])]);
     }
