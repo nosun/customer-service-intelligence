@@ -32,7 +32,7 @@ class ProductQuestionAnalysisValidator
         $output['confidence'] = round((float) $output['confidence'], 4);
 
         $requiredSource = match ($output['work_queue']) {
-            'catalog_answerable' => ['product_catalog'],
+            'catalog_answerable' => ['product_catalog', 'product_and_policy'],
             'catalog_data_missing' => ['product_catalog'],
             'policy_review' => ['verified_policy', 'product_and_policy'],
             'factory_review' => ['factory_capability'],

@@ -17,6 +17,9 @@ class ProductQuestionPolicyReviewer
         string $scope,
         int $reviewerId,
     ): void {
+        if ($status === 'confirmed' && ($candidate->conflicts !== [] || $candidate->open_questions !== [])) {
+            throw new RuntimeException('策略仍有冲突或开放问题，解决并清空后才能发布为 verified 知识。');
+        }
         if ($candidate->review_status === 'confirmed' && $candidate->knowledge_article_id !== null) {
             if ($status !== 'confirmed') {
                 throw new RuntimeException('已发布策略不能直接驳回；请通过知识版本流程废弃。');

@@ -116,6 +116,9 @@ class ProductQuestionAnalyzer
             'product' => $question->product,
             'product_catalog' => $productSnapshot ? [
                 'product' => $productSnapshot->product,
+                'type' => data_get($productSnapshot->product, 'type'),
+                'sub_type' => data_get($productSnapshot->product, 'sub_type'),
+                'customizable' => data_get($productSnapshot->product, 'customizable'),
                 'attributes' => data_get($productSnapshot->product_detail, 'attributes', []),
                 'images' => collect($productSnapshot->images)->map(fn (array $image): array => [
                     'style' => $image['style'] ?? null,
@@ -127,6 +130,10 @@ class ProductQuestionAnalyzer
                 'sizes' => data_get($productSnapshot->options, 'sizes', []),
                 'stock_specs' => data_get($productSnapshot->options, 'stock_specs', []),
                 'additional_services' => data_get($productSnapshot->options, 'additional_services', []),
+                'editable_fields' => data_get($productSnapshot->options, 'editable_fields', []),
+                'custom_size_input_available' => $this->customSizeInputAvailable($productSnapshot),
+                'custom_size_entry_method' => $this->customSizeInputAvailable($productSnapshot) === true ? 'size_selector' : null,
+                'size_chart_available' => data_get($productSnapshot->options, 'size_chart', []) !== [],
                 'synced_at' => $productSnapshot->synced_at?->toIso8601String(),
             ] : null,
             'question_type' => $question->type_text,
@@ -140,6 +147,22 @@ class ProductQuestionAnalyzer
         ];
     }
 
+    private function customSizeInputAvailable(CommerceProduct $product): ?bool
+    {
+        $configured = data_get($product->options, 'custom_size_available');
+        if (is_bool($configured)) {
+            return $configured;
+        }
+
+        if (data_get($product->product, 'type') === 'dress'
+            && in_array(data_get($product->product, 'customizable'), [true, 1, '1'], true)
+        ) {
+            return true;
+        }
+
+        return in_array(data_get($product->product, 'customizable'), [false, 0, '0'], true) ? false : null;
+    }
+
     /** @return array{output:array<string,mixed>, usage:array<string,mixed>, request_id:?string} */
     private function complete(string $systemPrompt, string $userPrompt, bool $hasAnswer): array
     {
@@ -149,7 +172,12 @@ class ProductQuestionAnalyzer
             try {
                 $completion = $this->client->structuredCompletion($systemPrompt, $userPrompt);
                 $usage = $this->usage($usage, $completion['usage']);
-                $completion['output'] = $this->validator->validate($completion['output'], $hasAnswer);
+                $output = $completion['output'];
+                if (! $hasAnswer) {
+                    $output['reply_pattern'] = 'unanswered';
+                    $output['answer_summary'] = null;
+                }
+                $completion['output'] = $this->validator->validate($output, $hasAnswer);
                 $completion['usage'] = [...$usage, 'validation_retries' => $attempt];
 
                 return $completion;

@@ -33,6 +33,9 @@ class CommerceSiteController extends Controller
         $data['brand_name'] = trim($data['brand_name']);
         $data['public_base_url'] = rtrim($data['public_base_url'], '/');
         $data['customer_service_email'] = $this->nullableEmail($data['customer_service_email'] ?? null);
+        $data['public_phone'] = $this->nullableText($data['public_phone'] ?? null);
+        $data['try_on_policy'] = $this->nullableText($data['try_on_policy'] ?? null);
+        $data['physical_store_info'] = $this->nullableText($data['physical_store_info'] ?? null);
         CommerceSite::create($data);
         admin_toastr('站点配置已保存。', 'success');
 
@@ -50,6 +53,9 @@ class CommerceSiteController extends Controller
         $data['brand_name'] = trim($data['brand_name']);
         $data['public_base_url'] = rtrim($data['public_base_url'], '/');
         $data['customer_service_email'] = $this->nullableEmail($data['customer_service_email'] ?? null);
+        $data['public_phone'] = $this->nullableText($data['public_phone'] ?? null);
+        $data['try_on_policy'] = $this->nullableText($data['try_on_policy'] ?? null);
+        $data['physical_store_info'] = $this->nullableText($data['physical_store_info'] ?? null);
         if (trim((string) ($data['api_token'] ?? '')) === '') {
             unset($data['api_token']);
         } else {
@@ -84,9 +90,14 @@ class CommerceSiteController extends Controller
             'admin_api_url' => ['required', 'url:http,https', 'max:500'],
             'public_base_url' => ['required', 'url:http,https', 'max:500'],
             'customer_service_email' => ['nullable', 'email:rfc', 'max:254'],
+            'operates_online_only' => ['nullable', 'boolean'],
+            'live_chat_enabled' => ['nullable', 'boolean'],
+            'public_phone' => ['nullable', 'string', 'max:100'],
+            'try_on_policy' => ['nullable', Rule::in(['not_offered', 'available', 'appointment_only'])],
+            'physical_store_info' => ['nullable', 'string', 'max:2000'],
             'api_token' => [$site?->exists ? 'nullable' : 'required', 'string', 'max:4096'],
             'enabled' => ['nullable', 'boolean'],
-        ]) + ['enabled' => false];
+        ]) + ['enabled' => false, 'operates_online_only' => null, 'live_chat_enabled' => null];
     }
 
     private function nullableEmail(mixed $value): ?string
@@ -94,5 +105,12 @@ class CommerceSiteController extends Controller
         $email = trim((string) $value);
 
         return $email === '' ? null : $email;
+    }
+
+    private function nullableText(mixed $value): ?string
+    {
+        $text = trim((string) $value);
+
+        return $text === '' ? null : $text;
     }
 }

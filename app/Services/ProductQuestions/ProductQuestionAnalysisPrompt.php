@@ -6,9 +6,9 @@ use App\Models\ProductQuestionAnalysis;
 
 class ProductQuestionAnalysisPrompt
 {
-    public const VERSION = 'product-question-analysis-v2';
+    public const VERSION = 'product-question-analysis-v9';
 
-    public const BATCH_VERSION = 'product-question-routing-batch-v1';
+    public const BATCH_VERSION = 'product-question-routing-batch-v9';
 
     public function system(): string
     {
@@ -42,7 +42,12 @@ Return one JSON object with exactly these fields:
 Only use auto_candidate when risk is low, the question is repeatable, and a future reply can be grounded in verified knowledge or fresh business facts. Missing or unverified facts must not be converted into claims.
 
 Routing rules:
-- Use catalog_answerable only when current product_catalog contains the facts needed to answer safely. auto_candidate is only allowed in this queue.
+- Use ask_dress_length when the customer asks for a dress length such as shoulder-to-hem or hollow-to-hem. The answer must use the current product hemline, requested standard size, and the verified hollow-to-hem reference chart. Do not describe hollow-to-hem as shoulder-to-hem.
+- Use ask_pockets when the customer only asks whether the current product already has pockets. Use request_add_pockets when the customer asks to add or customize pockets, including "does it have pockets, or can they be added?" Historical answers about other products cannot establish the current product's default pocket construction. Add-pocket eligibility must be decided from the current product silhouette; Mermaid/Trumpet is the verified exception.
+- Use website_usage with request_custom_size when the customer asks where or how to enter measurements on the product page. This is an operational website question, not a request to recommend a size. Use size_fit with ask_size_recommendation only when the customer asks which size fits or supplies measurements for comparison.
+- For product_catalog.type=dress, customizable=1, custom_size_input_available=true, and custom_size_entry_method=size_selector, treat the Custom Size workflow as a verified current capability: Size -> Custom Size -> complete the displayed measurement fields. The customer does not need to supply measurements, confirm a shopping stage, or ask about fees before this workflow can be answered.
+- Use catalog_answerable when current product_catalog plus the supplied verified workflow contains the facts needed to answer safely. answer_source may be product_catalog or product_and_policy. auto_candidate is only allowed in this queue, but sending still requires the application's human Preview and Confirm workflow.
+- Do not add unasked facts about Custom Size fees, rush service, production impact, or customer-service contact to required_facts or missing_facts. If the customer also gives an event date, delivery feasibility needs the destination country and fresh ETA, but this does not block the direct Custom Size instructions.
 - Use catalog_data_missing when the customer asks for a clear product fact or additional product photo that should come from the merchant/catalog, but it is not present in current product_catalog.
 - Use policy_review when a reusable site policy is needed or an observed historical claim still needs business verification.
 - Use factory_review when manufacturing capability, customization feasibility, fee, exceptions, or production-time impact needs factory confirmation. Provide factory_capability_key and factory_question.
@@ -81,6 +86,12 @@ PROMPT;
                     'observed_answer' => $context['answer'],
                     'has_current_product_catalog' => $context['product_catalog'] !== null,
                     'current_catalog_facts' => $context['product_catalog'] === null ? null : [
+                        'type' => $context['product_catalog']['type'] ?? null,
+                        'customizable' => $context['product_catalog']['customizable'] ?? null,
+                        'editable_fields' => $context['product_catalog']['editable_fields'] ?? [],
+                        'custom_size_input_available' => $context['product_catalog']['custom_size_input_available'] ?? null,
+                        'custom_size_entry_method' => $context['product_catalog']['custom_size_entry_method'] ?? null,
+                        'size_chart_available' => $context['product_catalog']['size_chart_available'] ?? false,
                         'attribute_keys' => array_keys($context['product_catalog']['attributes'] ?? []),
                         'color_count' => count($context['product_catalog']['colors'] ?? []),
                         'size_count' => count($context['product_catalog']['sizes'] ?? []),
@@ -117,13 +128,24 @@ Return one JSON object with exactly one top-level field named items. Return exac
 - confidence: 0 to 1 confidence in intent and routing
 
 Routing rules:
-- catalog_answerable requires answer_source=product_catalog and current_catalog_facts showing the needed fact is available.
+- Use ask_dress_length when the customer asks for a dress length such as shoulder-to-hem or hollow-to-hem. This is catalog_answerable only when the current product hemline and requested size can be resolved through the verified hollow-to-hem chart.
+- Use ask_pockets when the customer only asks whether the current product already has pockets. Use request_add_pockets when the customer asks to add or customize pockets, including "does it have pockets, or can they be added?" Historical answers about other products cannot establish the current product's default pocket construction. Add-pocket eligibility must be decided from the current product silhouette; Mermaid/Trumpet is the verified exception.
+- Use website_usage with request_custom_size when the customer asks where or how to enter measurements on the product page. This is an operational website question, not a size recommendation. Use size_fit with ask_size_recommendation only when the customer asks which size fits or supplies measurements for comparison.
+- When current_catalog_facts show type=dress, customizable=1, custom_size_input_available=true, and custom_size_entry_method=size_selector, route the measurement-entry workflow to catalog_answerable with answer_source=product_and_policy. Do not route it to factory_review and do not require the customer's measurements, shopping stage, Custom Size fee, or rush-service facts.
+- catalog_answerable requires current_catalog_facts showing the needed fact is available. Its answer_source may be product_catalog or product_and_policy.
 - catalog_data_missing requires answer_source=product_catalog. Use it when the question is clear and the merchant must supply a missing product fact or additional product photo. This is not customer_clarification.
 - policy_review requires answer_source=verified_policy or product_and_policy. Historical repetition never makes a policy verified.
 - factory_review requires answer_source=factory_capability plus factory_capability_key and factory_question. Prefer one reusable factory capability over an SN-specific question.
 - customer_clarification requires answer_source=customer_input and is only for information the customer must provide, such as measurements, destination, event date, or desired option. Never use it because the merchant owes the customer product details, photos, or documents.
 - human_review covers ambiguous, conflicting, exceptional, multi-intent, or high-risk cases.
 - When one question contains two independent requests (for example product photos plus delivery time, or exchange policy plus size advice), use intent_key=unclear_or_multi_intent and work_queue=human_review instead of choosing only one request.
+- Use ask_product_origin only for where the product is made or manufactured.
+- Use ask_production_time for manufacturing or processing lead time without destination-specific total delivery evaluation.
+- Use ask_delivery_time for the standard destination-specific arrival estimate or whether standard delivery can meet an event date.
+- Use request_rush_order only when the customer explicitly asks for rush, expedited production, fast dispatch, or a faster-than-standard option. A close event date alone remains ask_delivery_time unless expedited service is requested.
+- Use ask_shipping_options for destination support, shipping methods, post-dispatch transit time, estimated shipping cost, or import duty. Do not use it for total arrival ETA, production time, or an existing order's tracking status.
+- Use ask_return_policy for return eligibility, return conditions, exchanges, or changing size after purchase. The site does not offer direct exchanges, so exchange and size-change questions belong to the same return-policy intent.
+- Use ask_refund only for an actual after-sales refund, compensation, quality, wrong-item, or other complaint that requires order-specific review. Do not use it for a general presales question about the refundable amount under the return policy.
 - Use request_custom_color only when the customer asks to manufacture a nonstandard color or change part of the design. If the customer selects an advertised color and asks how another component will look, use ask_color_match.
 - Do not omit, merge, duplicate, or invent record_id values.
 PROMPT;

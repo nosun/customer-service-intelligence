@@ -13,6 +13,17 @@
     $answerSources = \App\Models\ProductQuestionAnalysis::ANSWER_SOURCES;
     $workQueues = \App\Models\ProductQuestionAnalysis::WORK_QUEUES;
     $assessmentLabels = ['good' => '良好', 'partial' => '部分满足', 'poor' => '较差', 'not_applicable' => '不适用'];
+    $productAttributes = collect(data_get($productSnapshot?->product_detail, 'attributes', []))
+        ->map(function ($value) {
+            $values = is_array($value) ? collect($value)->flatten() : collect([$value]);
+
+            return $values
+                ->reject(fn ($item) => $item === null || $item === '' || $item === [])
+                ->map(fn ($item) => is_bool($item) ? ($item ? '1' : '0') : (string) $item)
+                ->implode('、');
+        })
+        ->filter(fn (string $value) => $value !== '');
+    $productImageUrl = $productSnapshot?->primaryImageUrl();
 @endphp
 
 <style>
@@ -62,15 +73,54 @@
             </div>
         @endif
 
+        <div class="box box-{{ $draft?->status === 'generated' ? 'success' : ($draft ? 'warning' : 'default') }}">
+            <div class="box-header with-border"><h3 class="box-title">AI Draft（仅草稿）</h3></div>
+            <div class="box-body">
+                @if($draft)
+                    <dl class="qa-kv">
+                        <dt>状态</dt><dd>{{ $draft->status }}</dd>
+                        <dt>意图</dt><dd>{{ implode('、', $draft->intents ?: []) ?: '—' }}</dd>
+                        <dt>建议可见性</dt><dd>{{ $draft->recommended_visible ? '公开' : '隐藏/私密' }}</dd>
+                        <dt>缺失事实</dt><dd>{{ implode('；', $draft->missing_facts ?: []) ?: '无' }}</dd>
+                        <dt>安全提示</dt><dd>{{ implode('；', $draft->safety_flags ?: []) ?: '无' }}</dd>
+                        <dt>置信度</dt><dd>{{ $draft->confidence === null ? '—' : number_format($draft->confidence * 100, 1).'%' }}</dd>
+                    </dl>
+                    @if($draft->answer())
+                        <hr><strong>草稿内容</strong><div class="qa-content">{{ $draft->answer() }}</div>
+                    @endif
+                    @if($draft->error_message)<div class="alert alert-danger" style="margin-top:12px">{{ $draft->error_message }}</div>@endif
+                @else
+                    <p class="text-muted">尚未生成。生成过程只保存本地草稿，不会 Preview 或发送到站点。</p>
+                @endif
+            </div>
+            <div class="box-footer">
+                @if($draftRequest && in_array($draftRequest->status, ['queued', 'running'], true))
+                    <div class="callout callout-info">
+                        <p><strong>n8n Draft 正在{{ $draftRequest->status === 'queued' ? '排队' : '运行' }}</strong></p>
+                        <p class="text-muted">请求 {{ $draftRequest->request_id }}@if($draftRequest->n8n_execution_id) · Execution {{ $draftRequest->n8n_execution_id }}@endif。该流程可能需要数分钟，本页会自动刷新。</p>
+                    </div>
+                    <script>window.setTimeout(function () { window.location.reload(); }, 5000);</script>
+                @elseif($draftRequest && in_array($draftRequest->status, ['failed', 'stale'], true))
+                    <div class="callout callout-danger"><p><strong>n8n Draft {{ $draftRequest->status === 'stale' ? '已过期' : '失败' }}</strong></p><p>{{ $draftRequest->error_message }}</p></div>
+                @endif
+                <form method="post" action="{{ admin_url('product-questions/'.$question->external_id.'/generate-draft') }}">
+                    @csrf<input type="hidden" name="site_id" value="{{ $site->id }}">
+                    <button class="btn btn-success" type="submit" @if($draftRequest && in_array($draftRequest->status, ['queued', 'running'], true)) disabled @endif><i class="fa fa-magic"></i> {{ $draft ? '检查并复用 Draft' : '通过 n8n 生成 Draft' }}</button>
+                    @if($draft)<button class="btn btn-warning" type="submit" name="force" value="1" @if($draftRequest && in_array($draftRequest->status, ['queued', 'running'], true)) disabled @endif><i class="fa fa-refresh"></i> 强制重新生成</button>@endif
+                    <span class="text-muted" style="margin-left:8px">生成后仍需人工核对，并继续走 Preview → Confirm。</span>
+                </form>
+            </div>
+        </div>
+
         <div class="box box-solid">
             <div class="box-header with-border"><h3 class="box-title">{{ $preview ? '重新 Preview' : '回复问答' }}</h3></div>
             <form method="post" action="{{ admin_url('product-questions/'.$question->external_id.'/preview-reply') }}">
                 @csrf<input type="hidden" name="site_id" value="{{ $site->id }}">
                 <div class="box-body">
                     @if($errors->any())<div class="alert alert-danger"><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
-                    <div class="form-group"><label>回答</label><textarea class="form-control" name="answer" rows="8" required maxlength="100000">{{ old('answer', $question->answer) }}</textarea></div>
-                    <div class="form-group"><label>前端展示</label><select class="form-control" name="visible" required><option value="1" @selected((string)old('visible', $question->visible ? '1' : '0') === '1')>展示</option><option value="0" @selected((string)old('visible', $question->visible ? '1' : '0') === '0')>隐藏</option></select></div>
-                    <div class="form-group"><label>操作原因</label><input class="form-control" name="reason" value="{{ old('reason') }}" required maxlength="1000" placeholder="工单号或业务依据"></div>
+                    <div class="form-group"><label>回答</label><textarea class="form-control" name="answer" rows="8" required maxlength="100000">{{ old('answer', $draft?->status === 'generated' ? $draft->answer() : $question->answer) }}</textarea></div>
+                    <div class="form-group"><label>前端展示</label><select class="form-control" name="visible" required><option value="1" @selected((string)old('visible', $draft ? ($draft->recommended_visible ? '1' : '0') : ($question->visible ? '1' : '0')) === '1')>展示</option><option value="0" @selected((string)old('visible', $draft ? ($draft->recommended_visible ? '1' : '0') : ($question->visible ? '1' : '0')) === '0')>隐藏</option></select></div>
+                    <div class="form-group"><label>操作原因 <span class="text-muted">（可选）</span></label><input class="form-control" name="reason" value="{{ old('reason') }}" maxlength="1000" placeholder="工单号或业务依据（如有）"></div>
                     <p class="help-block">先 Preview，不会立即修改站点数据。当前阶段不修改图片和 helpful 数值。</p>
                 </div>
                 <div class="box-footer"><button class="btn btn-primary" type="submit">生成 Preview</button></div>
@@ -161,17 +211,19 @@
 
     <aside>
         @if($productSnapshot)
-            <div class="box box-success"><div class="box-header with-border"><h3 class="box-title">产品上下文</h3></div><div class="box-body">
+            <div class="box box-success"><div class="box-header with-border">
+                <h3 class="box-title">产品上下文</h3>
+                @if($productSnapshot->product_url)<a class="pull-right" href="{{ $productSnapshot->product_url }}" target="_blank" rel="noopener noreferrer"><i class="fa fa-external-link"></i> 查看商品</a>@endif
+            </div><div class="box-body">
+                @if($productImageUrl)<img src="{{ $productImageUrl }}" alt="{{ $productSnapshot->name ?: '产品图片' }}" referrerpolicy="no-referrer" loading="lazy" style="display:block;width:100%;max-height:360px;object-fit:contain;margin-bottom:15px">@endif
                 <dl class="qa-kv">
                     <dt>产品名</dt><dd>{{ $productSnapshot->name ?: '—' }}</dd>
                     <dt>状态</dt><dd>{{ data_get($productSnapshot->product, 'status_text', $productSnapshot->status) }}</dd>
                     <dt>颜色</dt><dd>{{ implode('、', data_get($productSnapshot->options, 'colors', [])) ?: '—' }}</dd>
                     <dt>尺码</dt><dd>{{ implode('、', data_get($productSnapshot->options, 'sizes', [])) ?: '—' }}</dd>
-                    <dt>属性</dt><dd>@foreach(data_get($productSnapshot->product_detail, 'attributes', []) as $key => $value)<div><strong>{{ $key }}</strong>：{{ is_array($value) ? implode('、', $value) : $value }}</div>@endforeach</dd>
+                    @if($productAttributes->isNotEmpty())<dt>属性</dt><dd>@foreach($productAttributes as $key => $value)<div><strong>{{ $key }}</strong>：{{ $value }}</div>@endforeach</dd>@endif
                     <dt>同步时间</dt><dd>{{ $productSnapshot->synced_at?->format('Y-m-d H:i:s') ?: '—' }}</dd>
                 </dl>
-                @if($productSnapshot->product_url)<a href="{{ $productSnapshot->product_url }}" target="_blank" rel="noopener noreferrer">打开商品页</a>@endif
-                @if($productSnapshot->images)<div style="margin-top:10px">@foreach(array_slice($productSnapshot->images, 0, 4) as $image)@if($image['url'] ?? null)<a href="{{ $image['url'] }}" target="_blank" rel="noopener noreferrer"><img src="{{ $image['url'] }}" alt="产品图" style="max-width:100px;max-height:100px;margin:0 6px 6px 0"></a>@endif @endforeach</div>@endif
             </div></div>
         @else
             <div class="callout callout-warning"><p>尚未同步产品上下文。运行 <code>php artisan product-questions:sync-products --site={{ $site->site_key }}</code>。</p></div>

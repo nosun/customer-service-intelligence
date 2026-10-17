@@ -11,7 +11,8 @@ class SyncProductQuestions extends Command
 {
     protected $signature = 'product-questions:sync
                             {--site= : Site key or numeric ID; defaults to every enabled site}
-                            {--per-page=100 : API page size, 1 to 100}';
+                            {--per-page=100 : API page size, 1 to 100}
+                            {--full : Force a full snapshot and reconcile remote deletions}';
 
     protected $description = 'Synchronize product questions from each configured tradeManager Admin API';
 
@@ -50,9 +51,10 @@ class SyncProductQuestions extends Command
                     $site,
                     $perPage,
                     fn (int $page, int $lastPage, int $seen) => $this->line("  page {$page}/{$lastPage}, seen={$seen}"),
+                    (bool) $this->option('full'),
                 );
                 $this->info(
-                    "完成：pages={$result['pages']} total={$result['reported_total']} "
+                    "完成：mode={$result['mode']} pages={$result['pages']} total={$result['reported_total']} "
                     ."saved={$result['records_saved']} missing={$result['missing_marked']}",
                 );
             } catch (Throwable $exception) {

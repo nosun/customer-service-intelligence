@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "measurement_system": "metric",
+  "source": {
+    "name": "hellow to hem.csv",
+    "provided_at": "2026-10-17",
+    "note": "Source label normalized from 'hellow' to 'hollow'."
+  },
+  "definition": {
+    "hollow_to_hem": "Measured from the hollow at the center base of the neck to the finished hem.",
+    "hollow_to_hem_front": "Measured from the hollow at the center base of the neck to the finished front hem of a high-low dress.",
+    "not_equivalent_to": "shoulder_to_hem"
+  },
+  "sizes": ["2", "4", "6", "8", "10", "12", "14", "16", "16W", "18W", "20W", "22W", "24W", "26W"],
+  "hemlines": {
+    "short_mini": {
+      "label": "Short/Mini",
+      "aliases": ["Short", "Mini", "Short/Mini"],
+      "measurement": "hollow_to_hem",
+      "values_cm": {"2": 82, "4": 82, "6": 83, "8": 83, "10": 84, "12": 84, "14": 85, "16": 85, "16W": 88, "18W": 88, "20W": 88, "22W": 92, "24W": 92, "26W": 92}
+    },
+    "knee_length": {
+      "label": "Knee Length",
+      "aliases": ["Knee", "Knee Length"],
+      "measurement": "hollow_to_hem",
+      "values_cm": {"2": 96, "4": 96, "6": 97, "8": 97, "10": 98, "12": 98, "14": 99, "16": 99, "16W": 101, "18W": 101, "20W": 101, "22W": 103, "24W": 103, "26W": 103}
+    },
+    "high_low": {
+      "label": "High-Low (Asymmetrical)",
+      "aliases": ["High-Low", "High Low", "High-Low(Asymetrical)", "High-Low (Asymmetrical)", "Asymmetrical", "Asymetrical"],
+      "measurement": "hollow_to_hem_front",
+      "values_cm": {"2": 102, "4": 102, "6": 103, "8": 103, "10": 104, "12": 104, "14": 105, "16": 105, "16W": 107, "18W": 107, "20W": 107, "22W": 109, "24W": 109, "26W": 109}
+    },
+    "tea_length": {
+      "label": "Tea Length",
+      "aliases": ["Tea", "Tea Length"],
+      "measurement": "hollow_to_hem",
+      "values_cm": {"2": 116, "4": 116, "6": 118, "8": 118, "10": 119, "12": 119, "14": 122, "16": 123, "16W": 123, "18W": 123, "20W": 123, "22W": 123, "24W": 123, "26W": 123}
+    },
+    "ankle_length": {
+      "label": "Ankle Length",
+      "aliases": ["Ankle", "Ankle Length"],
+      "measurement": "hollow_to_hem",
+      "values_cm": {"2": 134, "4": 134, "6": 136, "8": 136, "10": 137, "12": 137, "14": 139, "16": 139, "16W": 142, "18W": 142, "20W": 142, "22W": 142, "24W": 142, "26W": 142}
+    }
+  }
+}

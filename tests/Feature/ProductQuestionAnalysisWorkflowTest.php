@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\CommerceProduct;
 use App\Models\CommerceSite;
 use App\Models\ProductQuestion;
 use App\Models\ProductQuestionAnalysis;
 use App\Models\ProductQuestionAnalysisRun;
+use App\Services\ProductQuestions\ProductQuestionAnalysisPrompt;
 use App\Services\ProductQuestions\ProductQuestionAnalyzer;
 use App\Services\ProductQuestions\ProductQuestionBatchAnalyzer;
 use App\Services\TradeManager\ProductQuestionSyncService;
@@ -48,7 +50,7 @@ class ProductQuestionAnalysisWorkflowTest extends TestCase
         $this->assertDatabaseHas('product_question_analysis_runs', [
             'product_question_id' => $question->id,
             'status' => 'completed',
-            'prompt_version' => 'product-question-analysis-v2',
+            'prompt_version' => ProductQuestionAnalysisPrompt::VERSION,
         ]);
         Http::assertSent(function (Request $request): bool {
             $body = $request->body();
@@ -76,6 +78,57 @@ class ProductQuestionAnalysisWorkflowTest extends TestCase
         $this->assertSame('completed', $result['status']);
         $this->assertSame(1, ProductQuestionAnalysisRun::firstOrFail()->usage['validation_retries']);
         Http::assertSentCount(2);
+    }
+
+    public function test_analyzer_normalizes_reply_fields_when_the_source_record_has_no_answer(): void
+    {
+        $question = $this->question([
+            'answer' => null,
+            'reply_status' => 'unanswered',
+        ]);
+        Http::fake(['minimax.test/*' => Http::response($this->completion($this->validOutput([
+            'reply_pattern' => 'direct_answer',
+            'answer_summary' => '模型误将建议回复当成了历史答案。',
+        ])), 200)]);
+
+        $result = app(ProductQuestionAnalyzer::class)->analyze($question);
+
+        $this->assertSame('completed', $result['status']);
+        $analysis = $question->analysis()->firstOrFail();
+        $this->assertSame('unanswered', $analysis->reply_pattern);
+        $this->assertNull($analysis->answer_summary);
+        Http::assertSentCount(1);
+    }
+
+    public function test_analyzer_receives_verified_custom_size_entry_facts_and_accepts_product_policy_answer(): void
+    {
+        $question = $this->question([
+            'question' => 'Where do I enter my measurements for my wedding dress?',
+            'answer' => '<p>Select Custom Size.</p>',
+        ]);
+        $this->customizableDress($question->site);
+        Http::fake(['minimax.test/*' => Http::response($this->completion($this->validOutput([
+            'primary_category' => 'website_usage',
+            'secondary_categories' => ['customization'],
+            'intent_key' => 'request_custom_size',
+            'customer_intent' => '客户询问在哪里填写定制尺码测量值',
+            'answer_source' => 'product_and_policy',
+            'work_queue' => 'catalog_answerable',
+            'answerability' => 'direct',
+            'risk_level' => 'low',
+            'required_facts' => ['商品类型', '是否支持定制', '填写入口'],
+            'missing_facts' => [],
+            'automation_recommendation' => 'auto_candidate',
+        ])), 200)]);
+
+        $result = app(ProductQuestionAnalyzer::class)->analyze($question);
+
+        $this->assertSame('completed', $result['status']);
+        $this->assertSame('catalog_answerable', $question->analysis()->firstOrFail()->work_queue);
+        $this->assertSame('product_and_policy', $question->analysis()->firstOrFail()->answer_source);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->body(), 'custom_size_input_available')
+            && str_contains($request->body(), 'custom_size_entry_method')
+            && str_contains($request->body(), 'size_selector'));
     }
 
     public function test_reviewed_analysis_is_never_overwritten_even_with_force(): void
@@ -171,6 +224,38 @@ class ProductQuestionAnalysisWorkflowTest extends TestCase
         $this->assertSame('custom_length', $custom->analysis()->firstOrFail()->factory_capability_key);
     }
 
+    public function test_batch_analyzer_routes_verified_custom_size_entry_as_website_usage(): void
+    {
+        $question = $this->question([
+            'id' => 139,
+            'question' => 'Where do I enter my measurements?',
+            'answer' => null,
+            'reply_status' => 'unanswered',
+        ]);
+        $this->customizableDress($question->site);
+        Http::fake(['minimax.test/*' => Http::response($this->completion(['items' => [[
+            'record_id' => $question->id,
+            ...$this->routingOutput([
+                'primary_category' => 'website_usage',
+                'secondary_categories' => ['customization'],
+                'intent_key' => 'request_custom_size',
+                'customer_intent' => '客户询问在哪里填写测量值',
+                'answer_source' => 'factory_capability',
+                'work_queue' => 'factory_review',
+                'factory_capability_key' => 'custom_size',
+                'factory_question' => '是否支持定制尺码？',
+            ]),
+        ]]]), 200)]);
+
+        app(ProductQuestionBatchAnalyzer::class)->analyze(collect([$question]));
+
+        $analysis = $question->analysis()->firstOrFail();
+        $this->assertSame('website_usage', $analysis->primary_category);
+        $this->assertSame('catalog_answerable', $analysis->work_queue);
+        $this->assertSame('product_and_policy', $analysis->answer_source);
+        $this->assertNull($analysis->factory_capability_key);
+    }
+
     public function test_batch_analyzer_does_not_treat_merchant_product_photos_as_customer_clarification(): void
     {
         $question = $this->question(['id' => 132, 'question' => 'Can you show me a real photo?']);
@@ -210,6 +295,44 @@ class ProductQuestionAnalysisWorkflowTest extends TestCase
         $this->assertSame('human_review', $analysis->work_queue);
         $this->assertSame('human_judgment', $analysis->answer_source);
         $this->assertNull($analysis->factory_capability_key);
+    }
+
+    public function test_routing_prompt_distinguishes_origin_production_delivery_rush_and_shipping_options(): void
+    {
+        $prompt = app(ProductQuestionAnalysisPrompt::class);
+
+        $this->assertStringContainsString('Use ask_product_origin only for where the product is made', $prompt->batchSystem());
+        $this->assertStringContainsString('A close event date alone remains ask_delivery_time', $prompt->batchSystem());
+        $this->assertStringContainsString('Use ask_shipping_options for destination support, shipping methods', $prompt->batchSystem());
+        $this->assertStringContainsString('Use ask_return_policy for return eligibility, return conditions, exchanges', $prompt->batchSystem());
+        $this->assertStringContainsString('Use ask_refund only for an actual after-sales refund, compensation', $prompt->batchSystem());
+        $this->assertNotContains('ask_exchange_policy', ProductQuestionAnalysis::INTENTS);
+        $this->assertStringContainsString('"ask_product_origin"', $prompt->batchUser([]));
+        $this->assertStringContainsString('"ask_shipping_options"', $prompt->batchUser([]));
+    }
+
+    public function test_shipping_options_can_request_destination_clarification(): void
+    {
+        $question = $this->question(['id' => 138, 'question' => 'How much is shipping?']);
+        Http::fake(['minimax.test/*' => Http::response($this->completion(['items' => [[
+            'record_id' => $question->id,
+            ...$this->routingOutput([
+                'primary_category' => 'shipping_delivery',
+                'intent_key' => 'ask_shipping_options',
+                'question_scope' => 'site_policy',
+                'answer_source' => 'customer_input',
+                'work_queue' => 'customer_clarification',
+                'required_facts' => ['配送目的地'],
+                'missing_facts' => ['配送目的地'],
+            ]),
+        ]]]), 200)]);
+
+        app(ProductQuestionBatchAnalyzer::class)->analyze(collect([$question]));
+
+        $analysis = $question->analysis()->firstOrFail();
+        $this->assertSame('ask_shipping_options', $analysis->intent_key);
+        $this->assertSame('customer_clarification', $analysis->work_queue);
+        $this->assertSame('customer_input', $analysis->answer_source);
     }
 
     public function test_batch_analyzer_routes_spam_to_human_review(): void
@@ -338,6 +461,45 @@ class ProductQuestionAnalysisWorkflowTest extends TestCase
         $this->assertNotNull($analysis->reviewed_at);
     }
 
+    public function test_product_context_shows_link_first_image_and_omits_empty_attributes(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $question = $this->question();
+        $site = $question->site;
+        CommerceProduct::create([
+            'commerce_site_id' => $site->id,
+            'sn' => 'QA100',
+            'name' => 'Blue Dress',
+            'product_url' => 'https://dressafford.test/blue-dress.html',
+            'product' => ['sn' => 'QA100', 'name' => 'Blue Dress', 'status_text' => 'Published'],
+            'product_detail' => ['attributes' => [
+                'field_fabric' => ['Chiffon'],
+                'field_notes' => '',
+                'field_season' => [],
+            ]],
+            'images' => [
+                ['url' => 'https://img.dorriswedding.com/image/0x0/90/1/8a2d11625265f32f/e879b42dd41a92d617277e29db34b38a.jpg', 'is_main' => true],
+                ['url' => 'https://cdn.test/second.jpg', 'is_main' => false],
+            ],
+            'options' => ['colors' => ['Blue'], 'sizes' => ['4']],
+            'payload_hash' => str_repeat('a', 64),
+            'sync_status' => 'completed',
+            'synced_at' => now(),
+        ]);
+
+        $response = $this->get("/admin/product-questions/{$question->external_id}?site_id={$site->id}")
+            ->assertOk()
+            ->assertSee('查看商品')
+            ->assertSee('https://dressafford.test/blue-dress.html', false)
+            ->assertSee('https://img.dorriswedding.com/image/828x0/90/1/8c564905c9889f85/e879b42dd41a92d617277e29db34b38a.jpg', false)
+            ->assertDontSee('https://cdn.test/second.jpg', false)
+            ->assertSee('field_fabric')
+            ->assertDontSee('field_notes')
+            ->assertDontSee('field_season');
+
+        $this->assertSame(1, substr_count($response->getContent(), 'https://img.dorriswedding.com/image/828x0/90/1/8c564905c9889f85/e879b42dd41a92d617277e29db34b38a.jpg'));
+    }
+
     public function test_review_cannot_mark_incomplete_medium_risk_analysis_as_auto_candidate(): void
     {
         $this->actingAs($this->administrator(), 'admin');
@@ -419,6 +581,29 @@ class ProductQuestionAnalysisWorkflowTest extends TestCase
             'created_at' => '2026-10-14 12:00:00',
             'updated_at' => '2026-10-14 13:00:00',
         ], $overrides));
+    }
+
+    private function customizableDress(CommerceSite $site): CommerceProduct
+    {
+        return CommerceProduct::create([
+            'commerce_site_id' => $site->id,
+            'sn' => 'QA100',
+            'name' => 'Blue Dress',
+            'product_url' => 'https://dressafford.test/blue-dress.html',
+            'product' => ['sn' => 'QA100', 'name' => 'Blue Dress', 'type' => 'dress', 'customizable' => 1],
+            'product_detail' => ['attributes' => []],
+            'images' => [],
+            'options' => [
+                'editable_fields' => ['color', 'size'],
+                'colors' => ['Blue'],
+                'sizes' => ['4', '6'],
+                'size_chart' => ['4' => ['bust' => '33.5']],
+                'additional_services' => [],
+            ],
+            'payload_hash' => str_repeat('c', 64),
+            'sync_status' => 'completed',
+            'synced_at' => now(),
+        ]);
     }
 
     /** @return array<string, mixed> */

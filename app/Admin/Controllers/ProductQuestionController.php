@@ -7,6 +7,13 @@ use App\Models\CommerceProduct;
 use App\Models\CommerceSite;
 use App\Models\ProductQuestion;
 use App\Models\ProductQuestionAnalysis;
+use App\Models\ProductQuestionDraftFeedback;
+use App\Models\ProductQuestionDraftRequest;
+use App\Services\N8n\N8nDraftWorkflowClient;
+use App\Services\N8n\WorkflowRegistry;
+use App\Services\ProductQuestions\N8nProductQuestionDraftService;
+use App\Services\ProductQuestions\ProductQuestionDraftFeedbackRecorder;
+use App\Services\ProductQuestions\ProductQuestionDraftInput;
 use App\Services\TradeManager\ProductQuestionClient;
 use App\Services\TradeManager\ProductQuestionSyncService;
 use App\Services\TradeManager\TradeManagerApiException;
@@ -53,6 +60,16 @@ class ProductQuestionController extends Controller
             ->where('commerce_site_id', $site->id)
             ->where('external_id', $questionId)
             ->firstOrFail();
+        $question->draftRequests()
+            ->whereIn('status', ['queued', 'running'])
+            ->where('updated_at', '<', now()->subMinutes(10))
+            ->update([
+                'status' => 'failed',
+                'error_message' => 'n8n Draft 工作流超过 10 分钟未完成，请检查 Execution 后重试。',
+                'finished_at' => now(),
+            ]);
+        $draft = $question->drafts()->latest('id')->first();
+        $draftRequest = $question->draftRequests()->latest('id')->first();
         $preview = session($this->previewKey($site, $questionId));
         $productSnapshot = CommerceProduct::query()
             ->where('commerce_site_id', $site->id)
@@ -62,21 +79,125 @@ class ProductQuestionController extends Controller
         return $content
             ->title('问答 #'.$questionId)
             ->description($site->name)
-            ->body(view('admin.product-questions.show', compact('site', 'question', 'preview', 'productSnapshot')));
+            ->body(view('admin.product-questions.show', compact('site', 'question', 'preview', 'productSnapshot', 'draft', 'draftRequest')));
+    }
+
+    public function generateDraft(
+        Request $request,
+        int $questionId,
+        N8nDraftWorkflowClient $n8n,
+        ProductQuestionDraftInput $draftInput,
+        WorkflowRegistry $workflows,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'site_id' => ['required', 'integer'],
+            'force' => ['sometimes', 'boolean'],
+        ]);
+        $site = CommerceSite::query()->where('enabled', true)->findOrFail($request->integer('site_id'));
+        $question = ProductQuestion::query()
+            ->where('commerce_site_id', $site->id)
+            ->where('external_id', $questionId)
+            ->firstOrFail();
+        if (! $question->remote_present || $question->reply_status !== 'unanswered') {
+            admin_toastr('只有仍在线且尚未回复的问题可以生成 Draft。', 'warning');
+
+            return back();
+        }
+        try {
+            $workflows->active(N8nProductQuestionDraftService::WORKFLOW_KEY, N8nProductQuestionDraftService::WORKFLOW_VERSION);
+        } catch (Throwable $exception) {
+            admin_toastr($this->message($exception), 'error');
+
+            return back();
+        }
+        $input = $draftInput->capture($question);
+        $force = (bool) ($validated['force'] ?? false);
+        $reusable = $question->draftRequests()
+            ->where('status', 'completed')
+            ->where('workflow_key', N8nProductQuestionDraftService::WORKFLOW_KEY)
+            ->where('workflow_version', N8nProductQuestionDraftService::WORKFLOW_VERSION)
+            ->where('input_hash', $input['hash'])
+            ->whereNotNull('product_question_draft_id')
+            ->latest('id')
+            ->first();
+        if (! $force && $reusable !== null) {
+            ProductQuestionDraftRequest::create([
+                'request_id' => (string) Str::uuid(),
+                'product_question_id' => $question->id,
+                'product_question_draft_id' => $reusable->product_question_draft_id,
+                'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+                'workflow_version' => N8nProductQuestionDraftService::WORKFLOW_VERSION,
+                'input_hash' => $input['hash'],
+                'input_snapshot' => $input['snapshot'],
+                'reused_from_request_id' => $reusable->id,
+                'status' => 'completed',
+                'finished_at' => now(),
+            ]);
+            admin_toastr('问题、商品、Policy 和工作流输入均未变化，已复用现有 Draft。', 'info');
+
+            return redirect(admin_url("product-questions/{$questionId}?site_id={$site->id}"));
+        }
+        $active = $question->draftRequests()
+            ->whereIn('status', ['queued', 'running'])
+            ->where('created_at', '>=', now()->subMinutes(15))
+            ->latest('id')
+            ->first();
+        if ($active !== null) {
+            admin_toastr('该问题已有正在运行的 n8n Draft 请求，请等待完成。', 'warning');
+
+            return back();
+        }
+        $draftRequest = ProductQuestionDraftRequest::create([
+            'request_id' => (string) Str::uuid(),
+            'product_question_id' => $question->id,
+            'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+            'workflow_version' => N8nProductQuestionDraftService::WORKFLOW_VERSION,
+            'input_hash' => $input['hash'],
+            'input_snapshot' => $input['snapshot'],
+            'force_regeneration' => $force,
+            'status' => 'queued',
+        ]);
+        try {
+            $n8n->trigger($draftRequest);
+            admin_toastr('n8n Draft 工作流已进入队列；页面会自动刷新状态。', 'success');
+        } catch (Throwable $exception) {
+            $draftRequest->update([
+                'status' => 'failed',
+                'error_message' => mb_substr($exception->getMessage(), 0, 5000),
+                'finished_at' => now(),
+            ]);
+            admin_toastr('无法启动 n8n Draft 工作流：'.$this->message($exception), 'error');
+        }
+
+        return redirect(admin_url("product-questions/{$questionId}?site_id={$site->id}"));
     }
 
     public function previewReply(
         Request $request,
         int $questionId,
         ProductQuestionClient $client,
+        ProductQuestionDraftFeedbackRecorder $feedback,
     ): RedirectResponse {
         $site = CommerceSite::query()->where('enabled', true)->findOrFail($request->integer('site_id'));
+        $question = ProductQuestion::query()->with('analysis')
+            ->where('commerce_site_id', $site->id)
+            ->where('external_id', $questionId)
+            ->firstOrFail();
         $payload = $request->validate([
             'answer' => ['required', 'string', 'max:100000'],
             'visible' => ['required', Rule::in(['0', '1', 0, 1])],
-            'reason' => ['required', 'string', 'max:1000'],
+            'reason' => ['nullable', 'string', 'max:1000'],
         ]);
         $payload['visible'] = (int) $payload['visible'];
+        $payload['reason'] = trim((string) ($payload['reason'] ?? ''))
+            ?: "CSI reviewed product question reply #{$questionId}";
+        $latestDraft = $question->drafts()->latest('id')->first();
+        if ($payload['visible'] === 1
+            && ($question->analysis?->intent_key === 'ask_order_status'
+                || ($latestDraft !== null && ! $latestDraft->recommended_visible))
+        ) {
+            return back()->withErrors(['visible' => '该问题涉及私密订单事实或被安全规则标记，必须使用隐藏回复。'])->withInput();
+        }
 
         try {
             $result = $client->previewReply($site, $questionId, $payload);
@@ -93,6 +214,14 @@ class ProductQuestionController extends Controller
             'changes' => data_get($result, 'operation.changes', []),
             'notification' => data_get($result, 'notification', []),
             'idempotency_key' => (string) Str::uuid(),
+            'draft_feedback_id' => $feedback->recordPreview(
+                $question,
+                $latestDraft,
+                $payload['answer'],
+                $payload['visible'] === 1,
+                $payload['reason'],
+                Admin::user()->id,
+            )->id,
         ]);
         admin_toastr('Preview 已生成；请核对差异后确认。', 'success');
 
@@ -133,6 +262,11 @@ class ProductQuestionController extends Controller
 
         if (is_array($result['question'] ?? null)) {
             $sync->storeQuestion($site, $result['question']);
+        }
+        if (is_numeric($preview['draft_feedback_id'] ?? null)) {
+            ProductQuestionDraftFeedback::query()
+                ->whereKey((int) $preview['draft_feedback_id'])
+                ->update(['status' => 'confirmed', 'confirmed_at' => now()]);
         }
         session()->forget($key);
         $notification = data_get($result, 'notification.status');
@@ -297,6 +431,8 @@ class ProductQuestionController extends Controller
             $query->where(function (Builder $query) use ($keyword): void {
                 $query->where('question', 'like', "%{$keyword}%")
                     ->orWhere('answer', 'like', "%{$keyword}%")
+                    ->orWhere('sn', 'like', "%{$keyword}%")
+                    ->orWhere('product->name', 'like', "%{$keyword}%")
                     ->orWhere('name', 'like', "%{$keyword}%")
                     ->orWhere('email', 'like', "%{$keyword}%");
             });

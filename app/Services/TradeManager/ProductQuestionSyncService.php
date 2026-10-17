@@ -5,6 +5,7 @@ namespace App\Services\TradeManager;
 use App\Models\CommerceSite;
 use App\Models\ProductQuestion;
 use App\Models\ProductQuestionSyncRun;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -16,10 +17,14 @@ class ProductQuestionSyncService
 
     /**
      * @param  null|callable(int, int, int): void  $progress  Receives page, last page and records seen.
-     * @return array{run_id: int, pages: int, reported_total: int, records_seen: int, records_saved: int, missing_marked: int}
+     * @return array{run_id: int, mode: string, pages: int, reported_total: int, records_seen: int, records_saved: int, missing_marked: int}
      */
-    public function sync(CommerceSite $site, int $perPage = 100, ?callable $progress = null): array
-    {
+    public function sync(
+        CommerceSite $site,
+        int $perPage = 100,
+        ?callable $progress = null,
+        bool $full = false,
+    ): array {
         if (! $site->enabled) {
             throw new RuntimeException("Site {$site->site_key} is disabled.");
         }
@@ -27,6 +32,8 @@ class ProductQuestionSyncService
             throw new RuntimeException('per_page must be between 1 and 100.');
         }
 
+        $cursor = $full ? null : $this->cursor($site);
+        $mode = $cursor === null ? 'full' : 'incremental';
         $token = (string) Str::uuid();
         $run = ProductQuestionSyncRun::create([
             'commerce_site_id' => $site->id,
@@ -44,13 +51,19 @@ class ProductQuestionSyncService
         $reportedTotal = null;
         $seenIds = [];
         $saved = 0;
+        $lastRemoteCursor = $cursor;
 
         try {
             do {
-                $result = $this->client->questions($site, [
+                $filters = [
                     'page' => $page,
                     'per_page' => $perPage,
-                ]);
+                ];
+                if ($cursor !== null) {
+                    $filters['updated_after'] = $cursor['updated_at']->subMinutes(5)->toIso8601String();
+                    $filters['after_id'] = 0;
+                }
+                $result = $this->client->questions($site, $filters);
                 $items = $result['items'] ?? null;
                 $pagination = $result['pagination'] ?? null;
                 if (! is_array($items) || ! is_array($pagination)) {
@@ -79,6 +92,22 @@ class ProductQuestionSyncService
                         throw new RuntimeException("Question {$externalId} was returned more than once.");
                     }
                     $seenIds[$externalId] = true;
+
+                    $updatedAt = $item['updated_at'] ?? null;
+                    if (! is_string($updatedAt) || trim($updatedAt) === '') {
+                        throw new RuntimeException("Question {$externalId} is missing updated_at.");
+                    }
+                    try {
+                        $remoteUpdatedAt = CarbonImmutable::parse($updatedAt);
+                    } catch (Throwable) {
+                        throw new RuntimeException("Question {$externalId} contains an invalid updated_at.");
+                    }
+                    if ($lastRemoteCursor === null
+                        || $remoteUpdatedAt->greaterThan($lastRemoteCursor['updated_at'])
+                        || ($remoteUpdatedAt->equalTo($lastRemoteCursor['updated_at'])
+                            && $externalId > $lastRemoteCursor['id'])) {
+                        $lastRemoteCursor = ['updated_at' => $remoteUpdatedAt, 'id' => $externalId];
+                    }
                 }
 
                 DB::transaction(function () use ($site, $items, $token, &$saved): void {
@@ -101,13 +130,16 @@ class ProductQuestionSyncService
                 );
             }
 
-            $missingMarked = ProductQuestion::query()
-                ->where('commerce_site_id', $site->id)
-                ->where('remote_present', true)
-                ->where(function ($query) use ($token): void {
-                    $query->whereNull('last_seen_sync_token')->orWhere('last_seen_sync_token', '!=', $token);
-                })
-                ->update(['remote_present' => false, 'updated_at' => now()]);
+            $missingMarked = 0;
+            if ($mode === 'full') {
+                $missingMarked = ProductQuestion::query()
+                    ->where('commerce_site_id', $site->id)
+                    ->where('remote_present', true)
+                    ->where(function ($query) use ($token): void {
+                        $query->whereNull('last_seen_sync_token')->orWhere('last_seen_sync_token', '!=', $token);
+                    })
+                    ->update(['remote_present' => false, 'updated_at' => now()]);
+            }
 
             $finishedAt = now();
             $run->update([
@@ -119,14 +151,20 @@ class ProductQuestionSyncService
                 'missing_marked' => $missingMarked,
                 'finished_at' => $finishedAt,
             ]);
-            $site->update([
+            $siteValues = [
                 'product_question_sync_status' => 'completed',
                 'product_question_sync_error' => null,
                 'product_questions_last_synced_at' => $finishedAt,
-            ]);
+            ];
+            if ($lastRemoteCursor !== null) {
+                $siteValues['product_questions_cursor_updated_at'] = $lastRemoteCursor['updated_at'];
+                $siteValues['product_questions_cursor_id'] = $lastRemoteCursor['id'];
+            }
+            $site->update($siteValues);
 
             return [
                 'run_id' => $run->id,
+                'mode' => $mode,
                 'pages' => $lastPage,
                 'reported_total' => $reportedTotal,
                 'records_seen' => count($seenIds),
@@ -150,6 +188,39 @@ class ProductQuestionSyncService
 
             throw $exception;
         }
+    }
+
+    /** @return null|array{updated_at: CarbonImmutable, id: int} */
+    private function cursor(CommerceSite $site): ?array
+    {
+        if ($site->product_questions_cursor_updated_at !== null
+            && $site->product_questions_cursor_id !== null) {
+            return [
+                'updated_at' => CarbonImmutable::instance($site->product_questions_cursor_updated_at),
+                'id' => (int) $site->product_questions_cursor_id,
+            ];
+        }
+
+        if ($site->product_question_sync_status !== 'completed'
+            || $site->product_questions_last_synced_at === null) {
+            return null;
+        }
+
+        $latest = ProductQuestion::query()
+            ->where('commerce_site_id', $site->id)
+            ->whereNotNull('remote_updated_at')
+            ->orderByDesc('remote_updated_at')
+            ->orderByDesc('external_id')
+            ->first(['external_id', 'remote_updated_at']);
+
+        if ($latest === null) {
+            return null;
+        }
+
+        return [
+            'updated_at' => CarbonImmutable::instance($latest->remote_updated_at),
+            'id' => (int) $latest->external_id,
+        ];
     }
 
     /** @param array<string, mixed> $item */

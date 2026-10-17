@@ -14,6 +14,7 @@ use Encore\Admin\Layout\Content;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use RuntimeException;
 
 class ProductQuestionPolicyController extends Controller
 {
@@ -82,13 +83,17 @@ class ProductQuestionPolicyController extends Controller
 
             return back();
         }
-        $reviewer->review(
-            $candidate,
-            $data['review_status'],
-            $data['review_notes'] ?? null,
-            $data['scope'] ?? $candidate->scope,
-            Admin::user()->id,
-        );
+        try {
+            $reviewer->review(
+                $candidate,
+                $data['review_status'],
+                $data['review_notes'] ?? null,
+                $data['scope'] ?? $candidate->scope,
+                Admin::user()->id,
+            );
+        } catch (RuntimeException $exception) {
+            return back()->withErrors(['review_status' => $exception->getMessage()]);
+        }
         admin_toastr($data['review_status'] === 'confirmed' ? '策略已确认并发布为 verified 知识。' : '策略候选已驳回。', 'success');
 
         return back();

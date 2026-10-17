@@ -27,3 +27,8 @@ Schedule::command('chatbot:sync --chat-limit=80')
     ->cron('17 */6 * * *')
     ->timezone('Asia/Shanghai')
     ->withoutOverlapping(30);
+
+Schedule::command('product-questions:reap-draft-requests')
+    ->everyMinute()
+    ->timezone('Asia/Shanghai')
+    ->withoutOverlapping(5);

@@ -13,17 +13,16 @@ use Throwable;
 
 class ProductQuestionBatchAnalyzer
 {
-    public const VERSION = 'product-question-batch-analyzer-v8';
+    public const VERSION = 'product-question-batch-analyzer-v12';
 
     private const CATALOG_INTENTS = [
         'ask_product_details', 'ask_product_photos', 'compare_products', 'ask_weight', 'ask_pockets',
-        'ask_lining', 'ask_built_in_bra', 'ask_closure', 'ask_train', 'ask_available_colors',
+        'ask_lining', 'ask_dress_length', 'ask_built_in_bra', 'ask_closure', 'ask_train', 'ask_available_colors',
         'ask_color_match', 'ask_color_photos', 'ask_fabric', 'ask_swatch', 'ask_size_chart',
         'ask_fit', 'ask_plus_size', 'ask_in_stock', 'ask_restock',
     ];
 
     private const FACTORY_INTENTS = [
-        'request_custom_size' => 'custom_size',
         'request_custom_color' => 'custom_color',
         'request_custom_length' => 'custom_length',
         'request_add_pockets' => 'add_pockets',
@@ -38,9 +37,9 @@ class ProductQuestionBatchAnalyzer
     ];
 
     private const POLICY_INTENTS = [
-        'ask_production_time', 'request_rush_order', 'ask_delivery_time', 'ask_shipping_country',
-        'ask_shipping_cost', 'ask_tracking', 'ask_price', 'ask_discount', 'ask_payment', 'ask_guarantee',
-        'ask_return_policy', 'ask_exchange_policy', 'ask_cancellation_policy', 'ask_refund',
+        'ask_product_origin', 'ask_production_time', 'request_rush_order', 'ask_delivery_time', 'ask_shipping_options',
+        'ask_tracking', 'ask_price', 'ask_discount', 'ask_payment', 'ask_guarantee',
+        'ask_return_policy', 'ask_cancellation_policy', 'ask_refund',
         'ask_order_status', 'ask_how_to_order', 'request_contact', 'ask_size_recommendation',
     ];
 
@@ -255,6 +254,16 @@ class ProductQuestionBatchAnalyzer
                         $rawItem['answer_source'] = 'human_judgment';
                         $rawItem['factory_capability_key'] = null;
                         $rawItem['factory_question'] = null;
+                    } elseif ($intent === 'request_custom_size'
+                        && data_get($eligibleItem, 'context.product_catalog.custom_size_input_available') === true
+                        && data_get($eligibleItem, 'context.product_catalog.custom_size_entry_method') === 'size_selector'
+                    ) {
+                        $rawItem['work_queue'] = 'catalog_answerable';
+                    } elseif ($intent === 'request_custom_size') {
+                        $rawItem['work_queue'] = 'factory_review';
+                        $rawItem['factory_capability_key'] = 'custom_size';
+                        $rawItem['factory_question'] = $rawItem['factory_question']
+                            ?? '请确认该商品是否支持定制尺码、适用范围、例外、费用以及对制作周期的影响。';
                     } elseif (in_array($intent, self::CATALOG_INTENTS, true)) {
                         $rawItem['work_queue'] = $queue === 'catalog_answerable'
                             && ($eligibleItem['context']['product_catalog'] ?? null) !== null
@@ -267,12 +276,12 @@ class ProductQuestionBatchAnalyzer
                             ?? '请确认该定制能力的适用范围、例外、费用以及对制作周期的影响。';
                     } elseif (in_array($intent, self::POLICY_INTENTS, true)
                         && ($queue !== 'customer_clarification'
-                            || ! in_array($intent, ['ask_delivery_time', 'ask_shipping_cost', 'ask_order_status'], true))
+                            || ! in_array($intent, ['ask_delivery_time', 'ask_shipping_options', 'ask_order_status'], true))
                     ) {
                         $rawItem['work_queue'] = 'policy_review';
                     }
                     $rawItem['answer_source'] = match ($rawItem['work_queue'] ?? null) {
-                        'catalog_answerable' => 'product_catalog',
+                        'catalog_answerable' => $intent === 'request_custom_size' ? 'product_and_policy' : 'product_catalog',
                         'catalog_data_missing' => 'product_catalog',
                         'policy_review' => ($rawItem['question_scope'] ?? null) === 'site_policy'
                             ? 'verified_policy'

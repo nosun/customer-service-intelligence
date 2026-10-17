@@ -26,6 +26,21 @@ class ProductQuestion extends Model
         return $this->hasMany(ProductQuestionAnalysisRun::class);
     }
 
+    public function drafts(): HasMany
+    {
+        return $this->hasMany(ProductQuestionDraft::class);
+    }
+
+    public function draftRequests(): HasMany
+    {
+        return $this->hasMany(ProductQuestionDraftRequest::class);
+    }
+
+    public function draftFeedback(): HasMany
+    {
+        return $this->hasMany(ProductQuestionDraftFeedback::class);
+    }
+
     protected function casts(): array
     {
         return [

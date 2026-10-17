@@ -26,6 +26,64 @@ class ConsoleNewClient
         return $this->baseUrl !== '' && $this->token !== '';
     }
 
+    /** @return array{items: list<array<string, mixed>>, pagination: array<string, int>, request_id: ?string, response_hash: string} */
+    public function findOrdersByEmail(string $email, int $pageSize = 10): array
+    {
+        $this->assertConfigured();
+        $response = $this->request()->get('orders', [
+            'customer_email' => $email,
+            'page' => 1,
+            'page_size' => max(1, min($pageSize, 100)),
+        ]);
+        $payload = $response->json();
+        $requestId = is_array($payload) && is_string($payload['request_id'] ?? null)
+            ? $payload['request_id']
+            : null;
+
+        if (! $response->successful() || data_get($payload, 'success') !== true
+            || ! is_array(data_get($payload, 'data.items'))
+            || ! is_array(data_get($payload, 'data.pagination'))
+        ) {
+            throw $this->exception($response, $payload, $requestId);
+        }
+
+        return [
+            'items' => data_get($payload, 'data.items'),
+            'pagination' => data_get($payload, 'data.pagination'),
+            'request_id' => $requestId,
+            'response_hash' => hash('sha256', $response->body()),
+        ];
+    }
+
+    /** @return array{items: list<array<string, mixed>>, pagination: array<string, int>, request_id: ?string, response_hash: string} */
+    public function workOrders(string $orderNumber, int $pageSize = 100): array
+    {
+        $this->assertConfigured();
+        $response = $this->request()->get('work-orders', [
+            'order_no' => $orderNumber,
+            'page' => 1,
+            'page_size' => max(1, min($pageSize, 100)),
+        ]);
+        $payload = $response->json();
+        $requestId = is_array($payload) && is_string($payload['request_id'] ?? null)
+            ? $payload['request_id']
+            : null;
+
+        if (! $response->successful() || data_get($payload, 'success') !== true
+            || ! is_array(data_get($payload, 'data.items'))
+            || ! is_array(data_get($payload, 'data.pagination'))
+        ) {
+            throw $this->exception($response, $payload, $requestId);
+        }
+
+        return [
+            'items' => data_get($payload, 'data.items'),
+            'pagination' => data_get($payload, 'data.pagination'),
+            'request_id' => $requestId,
+            'response_hash' => hash('sha256', $response->body()),
+        ];
+    }
+
     /** @return array{status: 'found'|'not_found', data: ?array<string, mixed>, request_id: ?string, response_hash: string} */
     public function findOrder(string $orderNumber): array
     {

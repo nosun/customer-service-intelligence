@@ -42,7 +42,7 @@
     <div class="box box-primary"><div class="box-body">
         <form method="get" action="{{ admin_url('product-questions') }}" class="qa-filters">
             <div><label>站点</label><select class="form-control" name="site_id">@foreach($sites as $option)<option value="{{ $option->id }}" @selected($site?->id === $option->id)>{{ $option->name }}</option>@endforeach</select></div>
-            <div><label>关键词</label><input class="form-control" name="keyword" value="{{ $filters['keyword'] ?? '' }}" placeholder="问题、回答、姓名或邮箱"></div>
+            <div><label>关键词</label><input class="form-control" name="keyword" value="{{ $filters['keyword'] ?? '' }}" placeholder="问题、回答、商品、SN、姓名或邮箱"></div>
             <div><label>产品 SN</label><input class="form-control" name="sn" value="{{ $filters['sn'] ?? '' }}"></div>
             <div><label>用户邮箱</label><input class="form-control" name="email" value="{{ $filters['email'] ?? '' }}"></div>
             <div><label>回复状态</label><select class="form-control" name="reply_status"><option value="">全部</option>@foreach($replyLabels as $value => $label)<option value="{{ $value }}" @selected(($filters['reply_status'] ?? '') === $value)>{{ $label }}</option>@endforeach</select></div>

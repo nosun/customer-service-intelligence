@@ -36,6 +36,21 @@ class ProductQuestionClient
         ));
     }
 
+    /** @return array{site: string, languages: array<int, array<string, string>>, currencies: array<int, array<string, string>>} */
+    public function localizationOptions(CommerceSite $site): array
+    {
+        return $this->data($this->readRequest($site)->get('localization/options'));
+    }
+
+    /** @return array<string, mixed> */
+    public function shippingOptions(CommerceSite $site, string $countryCode): array
+    {
+        return $this->data($this->readRequest($site)->get(
+            'shipping/options',
+            ['country' => strtoupper($countryCode)],
+        ));
+    }
+
     /** @return array<string, mixed> */
     public function previewReply(CommerceSite $site, int $questionId, array $payload): array
     {

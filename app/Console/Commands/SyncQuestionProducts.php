@@ -18,8 +18,9 @@ class SyncQuestionProducts extends Command
         {--work-queue= : Only products referenced by analyses in this work queue}
         {--shards=1 : Split distinct SNs into stable shards for parallel workers}
         {--shard=0 : Zero-based shard handled by this worker}
-        {--stale-hours=24 : Skip products fetched within this many hours}
-        {--force : Fetch even when the local snapshot is fresh}';
+        {--refresh-stale : Also refresh completed product snapshots older than --stale-hours}
+        {--stale-hours=24 : Product snapshot age used with --refresh-stale}
+        {--force : Synchronize every referenced product SN}';
 
     protected $description = 'Synchronize product details, images and options for product question SNs';
 
@@ -67,6 +68,18 @@ class SyncQuestionProducts extends Command
         }
         if ($options['work_queue'] !== null) {
             $query->whereHas('analysis', fn ($analysis) => $analysis->where('work_queue', $options['work_queue']));
+        }
+        if (! $this->option('force')) {
+            $query->whereNotExists(function ($products) use ($site, $options): void {
+                $products->selectRaw('1')
+                    ->from('commerce_products')
+                    ->whereColumn('commerce_products.sn', 'product_questions.sn')
+                    ->where('commerce_products.commerce_site_id', $site->id)
+                    ->where('commerce_products.sync_status', 'completed');
+                if ($this->option('refresh-stale')) {
+                    $products->where('commerce_products.synced_at', '>=', now()->subHours($options['stale_hours']));
+                }
+            });
         }
         $sns = $query->distinct()->orderBy('sn')->pluck('sn');
         $sns = $sns->filter(fn (string $sn): bool => abs(crc32($sn)) % $options['shards'] === $options['shard'])->values();

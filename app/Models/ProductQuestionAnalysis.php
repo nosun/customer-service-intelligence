@@ -8,16 +8,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ProductQuestionAnalysis extends Model
 {
     public const INTENTS = [
-        'ask_product_details', 'ask_product_photos', 'compare_products', 'ask_weight', 'ask_pockets', 'ask_lining',
+        'ask_product_details', 'ask_product_origin', 'ask_product_photos', 'compare_products', 'ask_weight', 'ask_pockets', 'ask_lining', 'ask_dress_length',
         'ask_built_in_bra', 'ask_closure', 'ask_train', 'ask_available_colors', 'ask_color_match',
         'ask_color_photos', 'ask_fabric', 'ask_swatch', 'ask_size_recommendation', 'ask_size_chart',
         'ask_fit', 'ask_plus_size', 'request_custom_size', 'request_custom_color', 'request_custom_length',
         'request_add_pockets', 'request_add_sleeves', 'request_remove_sleeves', 'request_change_neckline',
         'request_change_back', 'request_remove_train', 'request_add_train', 'request_mix_designs',
         'request_other_customization', 'ask_in_stock', 'ask_restock', 'ask_production_time',
-        'request_rush_order', 'ask_delivery_time', 'ask_shipping_country', 'ask_shipping_cost',
+        'request_rush_order', 'ask_delivery_time', 'ask_shipping_options',
         'ask_tracking', 'ask_price', 'ask_discount', 'ask_payment', 'ask_guarantee', 'ask_return_policy',
-        'ask_exchange_policy', 'ask_cancellation_policy', 'ask_refund', 'ask_order_status',
+        'ask_cancellation_policy', 'ask_refund', 'ask_order_status',
         'ask_how_to_order', 'request_contact', 'spam_or_irrelevant', 'unclear_or_multi_intent',
     ];
 
@@ -37,6 +37,7 @@ class ProductQuestionAnalysis extends Model
         'shipping_delivery' => '配送时间、费用与地区',
         'pricing_promotion' => '价格与优惠',
         'return_cancel_after_sales' => '退换、取消与售后',
+        'website_usage' => '网站操作与下单指引',
         'order_contact' => '订单与联系问题',
         'other_spam' => '其他或垃圾信息',
     ];

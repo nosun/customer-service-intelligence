@@ -88,6 +88,7 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
             'product_question_policy_run_id' => $run->id,
             'commerce_site_id' => $site->id,
             ...$this->strategy([$first->product_question_id, $second->product_question_id]),
+            'open_questions' => [],
             'review_status' => 'candidate',
         ]);
 
@@ -97,7 +98,7 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
                 'review_notes' => '业务确认颜色回复规则。',
             ])->assertRedirect("/admin/product-question-policies/{$candidate->id}");
 
-        $article = KnowledgeArticle::firstOrFail();
+        $article = KnowledgeArticle::where('key', 'qa_dorriswedding_ask_available_colors')->firstOrFail();
         $this->assertSame('verified', $article->status);
         $this->assertSame('dorriswedding', $article->site_key);
         $this->assertSame('业务确认颜色回复规则。', $candidate->fresh()->review_notes);
@@ -109,6 +110,32 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
         $this->assertSame(1, $article->fresh()->version);
     }
 
+    public function test_candidate_with_conflicts_or_open_questions_cannot_be_published_as_verified(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $site = $this->site();
+        $analysis = $this->analysis($site, 104, 'Can you guarantee this?');
+        $run = $this->policyRun($site);
+        $candidate = ProductQuestionPolicyCandidate::create([
+            'product_question_policy_run_id' => $run->id,
+            'commerce_site_id' => $site->id,
+            ...$this->strategy([$analysis->product_question_id], 'ask_guarantee'),
+            'conflicts' => ['历史说法不一致'],
+            'open_questions' => ['保证范围尚未确认'],
+            'review_status' => 'candidate',
+        ]);
+
+        $this->from("/admin/product-question-policies/{$candidate->id}")
+            ->post("/admin/product-question-policies/{$candidate->id}/review", [
+                'review_status' => 'confirmed',
+            ])
+            ->assertRedirect("/admin/product-question-policies/{$candidate->id}")
+            ->assertSessionHasErrors('review_status');
+
+        $this->assertSame('candidate', $candidate->fresh()->review_status);
+        $this->assertDatabaseMissing('knowledge_articles', ['key' => 'qa_dorriswedding_ask_guarantee']);
+    }
+
     public function test_confirming_global_candidate_publishes_cross_site_verified_knowledge(): void
     {
         $this->actingAs($this->administrator(), 'admin');
@@ -118,7 +145,8 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
         $candidate = ProductQuestionPolicyCandidate::create([
             'product_question_policy_run_id' => $run->id,
             'commerce_site_id' => $site->id,
-            ...$this->strategy([$analysis->product_question_id], 'ask_shipping_country'),
+            ...$this->strategy([$analysis->product_question_id], 'ask_shipping_options'),
+            'open_questions' => [],
             'scope' => 'site',
             'review_status' => 'candidate',
         ]);
@@ -129,7 +157,7 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
             'review_notes' => '所有站点使用当前站点域名下的 shipping-info.html。',
         ])->assertRedirect();
 
-        $article = KnowledgeArticle::where('key', 'qa_global_ask_shipping_country')->firstOrFail();
+        $article = KnowledgeArticle::where('key', 'qa_global_ask_shipping_options')->firstOrFail();
         $this->assertNull($article->site_key);
         $this->assertSame('verified', $article->status);
         $this->assertSame('global', $candidate->fresh()->scope);

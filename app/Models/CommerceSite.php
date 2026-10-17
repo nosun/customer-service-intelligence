@@ -31,7 +31,10 @@ class CommerceSite extends Model
         return [
             'api_token' => 'encrypted',
             'enabled' => 'boolean',
+            'operates_online_only' => 'boolean',
+            'live_chat_enabled' => 'boolean',
             'product_questions_last_synced_at' => 'datetime',
+            'product_questions_cursor_updated_at' => 'datetime',
         ];
     }
 }

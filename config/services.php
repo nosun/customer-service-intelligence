@@ -34,6 +34,14 @@ return [
         'research_synthesis_ticket_chunk_size' => (int) env('MINIMAX_RESEARCH_SYNTHESIS_TICKET_CHUNK_SIZE', 5),
     ],
 
+    'n8n' => [
+        'internal_api_token' => env('N8N_INTERNAL_API_TOKEN'),
+        'base_url' => env('N8N_BASE_URL', 'http://127.0.0.1:5678'),
+        'draft_webhook_path' => env('N8N_DRAFT_WEBHOOK_PATH', '/webhook/product-question-draft-v1'),
+        'webhook_token' => env('N8N_WEBHOOK_TOKEN'),
+        'trigger_timeout' => (int) env('N8N_TRIGGER_TIMEOUT', 10),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

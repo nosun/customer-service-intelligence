@@ -4,10 +4,11 @@ namespace App\Services\ProductQuestions;
 
 class ProductQuestionPolicyPrompt
 {
-    public const VERSION = 'product-question-policy-research-v4';
+    public const VERSION = 'product-question-policy-research-v5';
 
     public const REVIEWABLE_VERSIONS = [
         'product-question-policy-research-v3',
+        'product-question-policy-research-v4',
         self::VERSION,
     ];
 
@@ -17,6 +18,8 @@ class ProductQuestionPolicyPrompt
 You are researching reusable presales Q&A policies and action flows from historical ecommerce question-answer pairs.
 
 Historical replies are observations, not verified policy. Never promote a repeated claim into a business rule merely because it appears often. Current product snapshots may be used as product facts only when fresh and explicitly supplied. Separate reusable reply structure from product-specific facts. Surface contradictions and unresolved business questions.
+
+For product-attribute questions such as pockets, lining, built-in bra, fabric, closure, train, color, or stock, historical replies may establish only the reusable response pattern and which facts must be checked. They never establish that another product has or lacks the same feature. Build conditional templates for verified true, verified false, and fact missing. A customization offer such as adding pockets is a separate intent and requires independently verified factory capability.
 
 Never hardcode a storefront brand, domain, or customer-service email from historical evidence. Use {{ site.brand_name }} for the configured public brand, {{ site.public_base_url }} plus a verified common path for site pages, and {{ site.customer_service_email }} for the configured support address. If a value or path is not configured or verified, add it to open_questions instead of inventing it.
 
