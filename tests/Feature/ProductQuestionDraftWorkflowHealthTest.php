@@ -41,10 +41,21 @@ class ProductQuestionDraftWorkflowHealthTest extends TestCase
         ]);
         $stuck->timestamps = false;
         $stuck->update(['created_at' => now()->subMinutes(3), 'updated_at' => now()->subMinutes(3)]);
+        $replayQuestion = ProductQuestion::create([
+            'commerce_site_id' => $site->id, 'external_id' => 2, 'sn' => 'H-2', 'question' => 'Replay',
+            'reply_status' => 'unanswered', 'raw_payload' => ['_replay' => ['case_id' => 'pq-test']],
+            'remote_present' => false, 'synced_at' => now(),
+        ]);
+        ProductQuestionDraftRequest::create([
+            'request_id' => 'replay-failure', 'product_question_id' => $replayQuestion->id,
+            'workflow_key' => 'work/test', 'workflow_version' => '1', 'status' => 'failed',
+            'error_message' => 'Replay-only failure.', 'finished_at' => now(),
+        ]);
 
         $snapshot = app(ProductQuestionDraftWorkflowHealth::class)->snapshot();
 
         $this->assertSame(2, $snapshot['total']);
+        $this->assertSame(1, $snapshot['excluded_replay_requests']);
         $this->assertSame(1, $snapshot['status_counts']['completed']);
         $this->assertSame(1, $snapshot['status_counts']['queued']);
         $this->assertSame(1.0, $snapshot['blocked_draft_rate']);

@@ -17,6 +17,7 @@ use App\Services\ProductQuestions\ProductQuestionDraftInput;
 use App\Services\TradeManager\ProductQuestionClient;
 use App\Services\TradeManager\ProductQuestionSyncService;
 use App\Services\TradeManager\TradeManagerApiException;
+use App\Services\Work\ProductQuestionWorkItemManager;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Layout\Content;
 use Illuminate\Database\Eloquent\Builder;
@@ -63,11 +64,11 @@ class ProductQuestionController extends Controller
         $question->draftRequests()
             ->whereIn('status', ['queued', 'running'])
             ->where('updated_at', '<', now()->subMinutes(10))
-            ->update([
+            ->each(fn (ProductQuestionDraftRequest $draftRequest) => $draftRequest->update([
                 'status' => 'failed',
                 'error_message' => 'n8n Draft 工作流超过 10 分钟未完成，请检查 Execution 后重试。',
                 'finished_at' => now(),
-            ]);
+            ]));
         $draft = $question->drafts()->latest('id')->first();
         $draftRequest = $question->draftRequests()->latest('id')->first();
         $preview = session($this->previewKey($site, $questionId));
@@ -88,6 +89,7 @@ class ProductQuestionController extends Controller
         N8nDraftWorkflowClient $n8n,
         ProductQuestionDraftInput $draftInput,
         WorkflowRegistry $workflows,
+        ProductQuestionWorkItemManager $workItems,
     ): RedirectResponse {
         $validated = $request->validate([
             'site_id' => ['required', 'integer'],
@@ -121,7 +123,7 @@ class ProductQuestionController extends Controller
             ->latest('id')
             ->first();
         if (! $force && $reusable !== null) {
-            ProductQuestionDraftRequest::create([
+            $reusedRequest = ProductQuestionDraftRequest::create([
                 'request_id' => (string) Str::uuid(),
                 'product_question_id' => $question->id,
                 'product_question_draft_id' => $reusable->product_question_draft_id,
@@ -133,6 +135,7 @@ class ProductQuestionController extends Controller
                 'status' => 'completed',
                 'finished_at' => now(),
             ]);
+            $workItems->attach($reusedRequest);
             admin_toastr('问题、商品、Policy 和工作流输入均未变化，已复用现有 Draft。', 'info');
 
             return redirect(admin_url("product-questions/{$questionId}?site_id={$site->id}"));
@@ -157,6 +160,7 @@ class ProductQuestionController extends Controller
             'force_regeneration' => $force,
             'status' => 'queued',
         ]);
+        $workItems->attach($draftRequest);
         try {
             $n8n->trigger($draftRequest);
             admin_toastr('n8n Draft 工作流已进入队列；页面会自动刷新状态。', 'success');

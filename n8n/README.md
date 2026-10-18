@@ -46,6 +46,12 @@ docker compose up -d
 docker compose logs -f n8n
 ```
 
+已有实例的加密密钥已经保存在 `n8n_data` 卷的配置文件中，普通升级使用上面的命令，不要用另一个值覆盖。全新生产实例必须在第一次启动前设置 `N8N_ENCRYPTION_KEY`，并显式加载生产覆盖文件：
+
+```bash
+docker compose -f compose.yaml -f compose.production.yaml up -d
+```
+
 首次打开 `http://localhost:5678` 完成本地 Owner 设置，然后导入 `workflows/*.json`。工作流从环境变量读取站点、Laravel 地址和 Token，无需建立含业务密钥的 Credential。
 
 ## 运行与验收
@@ -105,6 +111,16 @@ php artisan n8n:register-workflow work/qa-draft-agent-v1 1.2.0 n8n/workflows/wor
 php artisan product-questions:draft-workflow-health --hours=24 --fail-on-unhealthy
 php artisan product-questions:draft-feedback-report --days=30
 ```
+
+后台人工审核不再需要直接编辑 JSON。把 Runner 生成的预测导入审核台：
+
+```bash
+php artisan product-questions:import-draft-replay-review \
+  storage/app/product-question-replays/1.2.0-predictions.json \
+  --workflow-version=1.2.0
+```
+
+在 `admin/workflow-replay-reviews` 逐条核对事实、Policy 和最终 Draft，完成后可从页面运行发布门禁。生产部署、备份、监控、Token 轮换和回滚见 `docs/runbooks/product-question-n8n-production.md`。
 
 ### 定向测试一条问答
 

@@ -539,6 +539,10 @@ Workflow `1.1.0` 已通过真实 n8n Webhook 完成 50/50 回放，Workflow 层�
 
 同轮清理已删除旧 Draft Generator/Prompt/命令/API 和工厂能力旧页面；工厂能力聚合只维护证据，不再隐式修改 Policy 候选。两个存量 Policy importer 已明确为手动迁移工具且未加入 Scheduler。Work 与 Analysis 使用独立的内部 API Token 作用域，仍保持同仓、同 Laravel 应用的逻辑隔离，暂不进行物理拆分。完整本地回归为 147 tests / 878 assertions，Pint、Workflow JSON、Compose 配置和 `git diff --check` 均通过。
 
+后续 P0/P1 架构落地：新增 Workflow 回放审核后台，将 Runner 预测、固定 Suite、事实错误、Policy 违规、采用结果、审核人和发布报告持久化；`1.2.0` 的 50 条真实预测已导入，仍保持 0/50 待人工审核。生产运行手册覆盖 migration、Scheduler、Execution 保留、数据卷备份、Token 轮换、监控、冒烟和回滚；健康检查排除隔离的回放请求，避免评估流量污染生产指标。
+
+工作中心新增最小通用 `CustomerCase`、来源关联、`WorkItem` Lease/Attempt、交接、SLA/Deadline、Outcome 与 `ActionProposal` 审批/执行结果表。新的后台产品问答 Draft 请求会创建生产 Case 和 WorkItem；回放请求不会进入生产 Case。已定义版本化 `CaseSnapshot`、`WorkerInput`、`WorkerResult`、`FactResult` 和 `ActionProposal` 契约，敏感事实默认不能分享给 AI。Action Proposal 当前只能提议和人工批准，没有业务执行路由，取消、退款、改单和暂停发货仍不能由 AI 直接执行。
+
 具体实施方案见：
 
 [`docs/architecture/n8n-ai-workflow-and-temporal-evolution-plan.md`](../architecture/n8n-ai-workflow-and-temporal-evolution-plan.md)

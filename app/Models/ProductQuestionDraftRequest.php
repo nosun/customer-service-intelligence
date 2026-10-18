@@ -14,6 +14,11 @@ class ProductQuestionDraftRequest extends Model
         return $this->belongsTo(ProductQuestion::class, 'product_question_id');
     }
 
+    public function workItem(): BelongsTo
+    {
+        return $this->belongsTo(WorkItem::class);
+    }
+
     public function draft(): BelongsTo
     {
         return $this->belongsTo(ProductQuestionDraft::class, 'product_question_draft_id');

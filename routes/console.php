@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
@@ -32,3 +33,9 @@ Schedule::command('product-questions:reap-draft-requests')
     ->everyMinute()
     ->timezone('Asia/Shanghai')
     ->withoutOverlapping(5);
+
+Schedule::command('product-questions:draft-workflow-health --hours=1 --fail-on-unhealthy')
+    ->everyFiveMinutes()
+    ->timezone('Asia/Shanghai')
+    ->withoutOverlapping(5)
+    ->onFailure(fn () => Log::critical('Product question n8n Draft workflow health check failed.'));

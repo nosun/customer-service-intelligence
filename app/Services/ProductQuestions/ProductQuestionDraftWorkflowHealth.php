@@ -12,9 +12,15 @@ class ProductQuestionDraftWorkflowHealth
     {
         $since = now()->subHours(max(1, $hours));
         $requests = ProductQuestionDraftRequest::query()
-            ->with('draft:id,status')
+            ->with('draft:id,status', 'question:id,raw_payload')
             ->where('created_at', '>=', $since)
             ->get();
+        $replayRequests = $requests->filter(fn (ProductQuestionDraftRequest $request): bool => filled(
+            data_get($request->question?->raw_payload, '_replay.case_id'),
+        ));
+        $requests = $requests->reject(fn (ProductQuestionDraftRequest $request): bool => filled(
+            data_get($request->question?->raw_payload, '_replay.case_id'),
+        ));
         $counts = collect(['queued', 'running', 'completed', 'failed', 'stale'])
             ->mapWithKeys(fn (string $status): array => [$status => $requests->where('status', $status)->count()])
             ->all();
@@ -26,12 +32,18 @@ class ProductQuestionDraftWorkflowHealth
         $total = $requests->count();
         $stuckQueued = $requests->where('status', 'queued')->filter(fn ($request): bool => $request->created_at->lt(now()->subMinutes(2)))->count();
         $stuckRunning = $requests->where('status', 'running')->filter(fn ($request): bool => ($request->started_at ?? $request->created_at)->lt(now()->subMinutes(10)))->count();
+        $unhealthyReasons = array_values(array_filter([
+            $stuckQueued > 0 ? "{$stuckQueued} queued requests exceeded two minutes" : null,
+            $stuckRunning > 0 ? "{$stuckRunning} running requests exceeded ten minutes" : null,
+            $failed > 0 ? "{$failed} workflow requests failed in the window" : null,
+        ]));
 
         return [
             'window_hours' => max(1, $hours),
             'window_started_at' => $since->toIso8601String(),
             'generated_at' => now()->toIso8601String(),
             'total' => $total,
+            'excluded_replay_requests' => $replayRequests->count(),
             'status_counts' => $counts,
             'completion_rate' => $this->rate($completed, $total),
             'workflow_failure_rate' => $this->rate($failed, $total),
@@ -42,7 +54,8 @@ class ProductQuestionDraftWorkflowHealth
             'p95_duration_ms' => $this->percentile($durations, 0.95),
             'stuck_queued' => $stuckQueued,
             'stuck_running' => $stuckRunning,
-            'healthy' => $stuckQueued === 0 && $stuckRunning === 0,
+            'healthy' => $unhealthyReasons === [],
+            'unhealthy_reasons' => $unhealthyReasons,
             'recent_errors' => $requests->whereIn('status', ['failed', 'stale'])
                 ->sortByDesc('id')->take(10)->map(fn (ProductQuestionDraftRequest $request): array => [
                     'request_id' => $request->request_id,
