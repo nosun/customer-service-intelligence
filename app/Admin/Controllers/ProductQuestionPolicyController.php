@@ -24,6 +24,10 @@ class ProductQuestionPolicyController extends Controller
         $query = ProductQuestionPolicyCandidate::query()
             ->with(['site', 'run'])
             ->whereHas('run', fn ($runs) => $runs->whereIn('status', ['completed', 'completed_with_errors']))
+            ->where(function ($candidates): void {
+                $candidates->whereNull('review_notes')
+                    ->orWhere('review_notes', 'not like', 'merged_into_policy_candidate:%');
+            })
             ->latest('id');
         if (! $request->boolean('all_versions')) {
             $query->where(function ($candidates): void {
@@ -40,6 +44,9 @@ class ProductQuestionPolicyController extends Controller
                 $query->where($field, $request->query($field));
             }
         }
+        if ($request->query('source') === 'factory_capability') {
+            $query->whereHas('run', fn ($runs) => $runs->where('batch_key', 'like', 'factory-capability-policy-review-%'));
+        }
 
         return $content
             ->title('问答回复策略')
@@ -52,10 +59,14 @@ class ProductQuestionPolicyController extends Controller
             ]));
     }
 
-    public function show(int $id, Content $content): Content
+    public function show(int $id, Content $content): Content|RedirectResponse
     {
         $candidate = ProductQuestionPolicyCandidate::with(['site', 'run', 'knowledgeArticle'])->findOrFail($id);
+        if (preg_match('/^merged_into_policy_candidate:(\d+)$/', (string) $candidate->review_notes, $matches) === 1) {
+            return redirect(admin_url('product-question-policies/'.$matches[1]));
+        }
         $evidence = ProductQuestion::query()
+            ->with('drafts')
             ->where('commerce_site_id', $candidate->commerce_site_id)
             ->whereIn('id', $candidate->evidence_question_ids)
             ->orderByDesc('remote_created_at')
@@ -71,7 +82,7 @@ class ProductQuestionPolicyController extends Controller
     {
         $candidate = ProductQuestionPolicyCandidate::with(['site', 'run'])->findOrFail($id);
         $data = $request->validate([
-            'review_status' => ['required', Rule::in(['confirmed', 'rejected'])],
+            'review_status' => ['required', Rule::in(['candidate', 'confirmed', 'rejected'])],
             'scope' => ['nullable', Rule::in(['site', 'global'])],
             'review_notes' => ['nullable', 'string', 'max:10000'],
         ]);
@@ -94,7 +105,12 @@ class ProductQuestionPolicyController extends Controller
         } catch (RuntimeException $exception) {
             return back()->withErrors(['review_status' => $exception->getMessage()]);
         }
-        admin_toastr($data['review_status'] === 'confirmed' ? '策略已确认并发布为 verified 知识。' : '策略候选已驳回。', 'success');
+        $message = match ($data['review_status']) {
+            'confirmed' => '策略已确认并发布为 verified 知识。',
+            'rejected' => '策略候选已驳回。',
+            default => '审核意见已保存，策略仍为待审核状态。',
+        };
+        admin_toastr($message, 'success');
 
         return back();
     }

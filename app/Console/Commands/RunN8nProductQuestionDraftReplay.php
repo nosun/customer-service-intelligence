@@ -19,6 +19,7 @@ class RunN8nProductQuestionDraftReplay extends Command
                             {--suite=resources/data/product-question-draft-replay-v1.json}
                             {--output= : Prediction JSON path}
                             {--review-template= : Human review annotation template path}
+                            {--case=* : Optional replay case ID; repeat to run a focused subset}
                             {--limit=0 : Optional case limit for smoke testing}
                             {--batch-size=5 : Concurrent webhook batch size}
                             {--timeout=900 : Timeout per batch in seconds}
@@ -53,6 +54,16 @@ class RunN8nProductQuestionDraftReplay extends Command
         }
         $suitePath = $this->path((string) $this->option('suite'));
         $cases = $suite->cases($suitePath);
+        $caseIds = array_values(array_unique(array_filter((array) $this->option('case'), 'is_string')));
+        if ($caseIds !== []) {
+            $cases = array_values(array_filter($cases, fn (array $case): bool => in_array($case['id'], $caseIds, true)));
+            $missingCaseIds = array_diff($caseIds, array_column($cases, 'id'));
+            if ($missingCaseIds !== []) {
+                $this->error('Replay case IDs not found: '.implode(', ', $missingCaseIds));
+
+                return self::INVALID;
+            }
+        }
         $limit = (int) $this->option('limit');
         if ($limit > 0) {
             $cases = array_slice($cases, 0, $limit);

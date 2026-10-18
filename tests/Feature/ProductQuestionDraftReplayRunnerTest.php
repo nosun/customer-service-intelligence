@@ -45,6 +45,10 @@ class ProductQuestionDraftReplayRunnerTest extends TestCase
                 $this->assertSame('1.2.0', data_get($request->input_snapshot, 'workflow.version'));
                 $this->assertSame('test-prompt-v4', data_get($request->input_snapshot, 'workflow.prompt_version'));
                 $caseId = data_get($request->question->raw_payload, '_replay.case_id');
+                if ($caseId === 'pq-001') {
+                    $this->assertSame('Yes', data_get($request->question->raw_payload, '_replay.fixture.product.attributes.field_builtinbra'));
+                    $this->assertNotNull(data_get($request->input_snapshot, 'question.replay_fixture_hash'));
+                }
                 $draft = ProductQuestionDraft::create([
                     'product_question_id' => $request->product_question_id,
                     'status' => $caseId === 'pq-001' ? 'generated' : 'blocked',
@@ -66,7 +70,9 @@ class ProductQuestionDraftReplayRunnerTest extends TestCase
             $site,
             $product,
             [
-                ['id' => 'pq-001', 'question' => 'Does it have pockets?'],
+                ['id' => 'pq-001', 'question' => 'Does it have pockets?', 'fixture' => [
+                    'product' => ['attributes' => ['field_builtinbra' => 'Yes']],
+                ]],
                 ['id' => 'pq-049', 'question' => 'Show my order publicly.'],
             ],
             N8nProductQuestionDraftService::WORKFLOW_KEY,

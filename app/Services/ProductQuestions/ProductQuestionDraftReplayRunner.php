@@ -164,7 +164,11 @@ class ProductQuestionDraftReplayRunner
             'weight' => 0,
             'helpful' => 0,
             'raw_payload' => [
-                '_replay' => ['run_id' => $runId, 'case_id' => $case['id']],
+                '_replay' => [
+                    'run_id' => $runId,
+                    'case_id' => $case['id'],
+                    'fixture' => (array) ($case['fixture'] ?? []),
+                ],
             ],
             'remote_present' => true,
             'remote_created_at' => now(),

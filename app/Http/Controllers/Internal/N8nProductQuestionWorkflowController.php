@@ -7,9 +7,7 @@ use App\Models\CommerceSite;
 use App\Models\N8nWorkflowExecution;
 use App\Models\ProductQuestion;
 use App\Models\ProductQuestionAnalysis;
-use App\Models\ProductQuestionDraft;
-use App\Services\ProductQuestions\ProductQuestionAnalyzer;
-use App\Services\ProductQuestions\ProductQuestionDraftGenerator;
+use App\Services\ProductQuestions\ProductQuestionBatchAnalyzer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +20,7 @@ class N8nProductQuestionWorkflowController extends Controller
     public function leaseAnalysis(Request $request): JsonResponse
     {
         $validated = $this->validateLease($request, true);
-        $questions = $this->questions($validated, false)
+        $questions = $this->questions($validated)
             ->with('analysis')
             ->get()
             ->reject(fn (ProductQuestion $question): bool => $question->analysis !== null
@@ -37,24 +35,10 @@ class N8nProductQuestionWorkflowController extends Controller
         ]);
     }
 
-    public function leaseDrafts(Request $request): JsonResponse
-    {
-        $validated = $this->validateLease($request, false);
-        $questions = $this->questions($validated, true)
-            ->limit($validated['limit'])
-            ->get();
-
-        return response()->json([
-            'workflow_key' => 'work/qa-draft-v1',
-            'count' => $questions->count(),
-            'data' => $questions->map(fn (ProductQuestion $question): array => $this->workItem($question, $validated['site_key']))->all(),
-        ]);
-    }
-
     public function analyze(
         Request $request,
         ProductQuestion $question,
-        ProductQuestionAnalyzer $analyzer,
+        ProductQuestionBatchAnalyzer $analyzer,
     ): JsonResponse {
         $validated = $this->validateExecution($request, 'analysis/qa-analysis-v1');
         if ($response = $this->completedExecution($question, $validated)) {
@@ -67,47 +51,19 @@ class N8nProductQuestionWorkflowController extends Controller
             $question,
             $validated,
             function () use ($analyzer, $question, $validated): array {
-                $result = $analyzer->analyze($question, (bool) ($validated['force'] ?? false));
+                $batch = $analyzer->analyzeResilient(
+                    collect([$question]),
+                    (bool) ($validated['force'] ?? false),
+                );
+                $result = $batch['results'][0];
+                $analysisId = $question->analysis()->value('id');
+                $result['analysis_id'] = $analysisId;
+                $result['usage'] = $batch['usage'];
 
                 return [
                     'result' => $result,
                     'result_type' => ProductQuestionAnalysis::class,
-                    'result_id' => $result['analysis_id'],
-                ];
-            },
-        );
-    }
-
-    public function draft(
-        Request $request,
-        ProductQuestion $question,
-        ProductQuestionDraftGenerator $generator,
-    ): JsonResponse {
-        $validated = $this->validateExecution($request, 'work/qa-draft-v1');
-        if ($response = $this->completedExecution($question, $validated)) {
-            return $response;
-        }
-        abort_unless($question->remote_present, 409, 'Question is no longer present on the source site.');
-        abort_unless($question->reply_status === 'unanswered', 409, 'Only unanswered questions can receive a draft.');
-        abort_unless($generator->isConfigured(), 503, 'MiniMax is not configured.');
-
-        return $this->execute(
-            $question,
-            $validated,
-            function () use ($generator, $question): array {
-                $draft = $generator->generate($question);
-
-                return [
-                    'result' => [
-                        'status' => $draft->status,
-                        'draft_id' => $draft->id,
-                        'intents' => $draft->intents,
-                        'missing_facts' => $draft->missing_facts,
-                        'safety_flags' => $draft->safety_flags,
-                        'recommended_visible' => $draft->recommended_visible,
-                    ],
-                    'result_type' => ProductQuestionDraft::class,
-                    'result_id' => $draft->id,
+                    'result_id' => $analysisId,
                 ];
             },
         );
@@ -133,7 +89,7 @@ class N8nProductQuestionWorkflowController extends Controller
     }
 
     /** @return Builder<ProductQuestion> */
-    private function questions(array $validated, bool $draft): Builder
+    private function questions(array $validated): Builder
     {
         $siteId = CommerceSite::query()->where('site_key', $validated['site_key'])->value('id');
         $query = ProductQuestion::query()
@@ -146,9 +102,6 @@ class N8nProductQuestionWorkflowController extends Controller
             $query->whereIn('external_id', $validated['question_ids']);
         } elseif ($validated['reply_status'] !== 'all') {
             $query->where('reply_status', $validated['reply_status']);
-        }
-        if ($draft) {
-            $query->where('reply_status', 'unanswered');
         }
 
         return $query;

@@ -36,6 +36,8 @@ return [
 
     'n8n' => [
         'internal_api_token' => env('N8N_INTERNAL_API_TOKEN'),
+        'work_internal_api_token' => env('N8N_WORK_INTERNAL_API_TOKEN'),
+        'analysis_internal_api_token' => env('N8N_ANALYSIS_INTERNAL_API_TOKEN'),
         'base_url' => env('N8N_BASE_URL', 'http://127.0.0.1:5678'),
         'draft_webhook_path' => env('N8N_DRAFT_WEBHOOK_PATH', '/webhook/product-question-draft-v1'),
         'webhook_token' => env('N8N_WEBHOOK_TOKEN'),

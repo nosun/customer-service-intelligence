@@ -50,29 +50,38 @@ class MiniMaxClient
     public function structuredCompletion(string $systemPrompt, string $userPrompt): array
     {
         $this->ensureConfigured();
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            $response = $this->request()->post('/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => $systemPrompt],
+                    ['role' => 'user', 'content' => $userPrompt],
+                ],
+                'temperature' => 0.1,
+                'max_completion_tokens' => $this->maxCompletionTokens,
+                'thinking' => ['type' => 'disabled'],
+            ]);
+            $response->throw();
 
-        $response = $this->request()->post('/chat/completions', [
-            'model' => $this->model,
-            'messages' => [
-                ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => $userPrompt],
-            ],
-            'temperature' => 0.1,
-            'max_completion_tokens' => $this->maxCompletionTokens,
-            'thinking' => ['type' => 'disabled'],
-        ]);
-        $response->throw();
+            $content = $response->json('choices.0.message.content');
+            try {
+                if (! is_string($content) || trim($content) === '') {
+                    throw new RuntimeException('MiniMax response does not contain message content.');
+                }
 
-        $content = $response->json('choices.0.message.content');
-        if (! is_string($content) || trim($content) === '') {
-            throw new RuntimeException('MiniMax response does not contain message content.');
+                return [
+                    'output' => $this->decodeJson($content),
+                    'usage' => is_array($response->json('usage')) ? $response->json('usage') : [],
+                    'request_id' => is_string($response->json('id')) ? $response->json('id') : null,
+                ];
+            } catch (RuntimeException $exception) {
+                if ($attempt === 2) {
+                    throw $exception;
+                }
+            }
         }
 
-        return [
-            'output' => $this->decodeJson($content),
-            'usage' => is_array($response->json('usage')) ? $response->json('usage') : [],
-            'request_id' => is_string($response->json('id')) ? $response->json('id') : null,
-        ];
+        throw new RuntimeException('MiniMax structured completion failed.');
     }
 
     private function request(): PendingRequest

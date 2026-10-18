@@ -50,6 +50,7 @@ class ProductQuestionPolicyReviewer
                     'knowledge_type' => 'policy',
                     'status' => 'verified',
                     'site_key' => $isGlobal ? null : $candidate->site->site_key,
+                    'automation_tier' => $candidate->automation_tier ?: ($existingArticle?->automation_tier ?? 'draft_sensitive'),
                     'applicability' => $candidate->applicability,
                     'required_facts' => $candidate->required_facts,
                     'policy_rules' => $candidate->policy_rules,

@@ -10,7 +10,9 @@ class ProductQuestionDraftReplaySuite
     public function cases(?string $path = null): array
     {
         $path ??= resource_path('data/product-question-draft-replay-v1.json');
-        $cases = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $suite = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $defaultFixture = is_array($suite['default_fixture'] ?? null) ? $suite['default_fixture'] : [];
+        $cases = is_array($suite['cases'] ?? null) ? $suite['cases'] : $suite;
         if (! is_array($cases) || count($cases) < 50) {
             throw new RuntimeException('Draft replay suite must contain at least 50 cases.');
         }
@@ -19,7 +21,11 @@ class ProductQuestionDraftReplaySuite
             throw new RuntimeException('Draft replay case IDs must be unique.');
         }
 
-        return array_values($cases);
+        return collect($cases)->map(function (array $case) use ($defaultFixture): array {
+            $case['fixture'] = array_replace_recursive($defaultFixture, (array) ($case['fixture'] ?? []));
+
+            return $case;
+        })->values()->all();
     }
 
     /** @param list<array<string,mixed>> $predictions
@@ -38,6 +44,8 @@ class ProductQuestionDraftReplaySuite
         $policyViolations = 0;
         $qualityReviewed = 0;
         $workflowFailures = 0;
+        $productIdentityRepetitions = 0;
+        $unsupportedFollowUpActions = 0;
         $accepted = 0;
         $durations = [];
         $cost = 0.0;
@@ -52,6 +60,19 @@ class ProductQuestionDraftReplaySuite
                 ? (bool) $prediction['blocked']
                 : ($prediction['status'] ?? null) === 'blocked';
             $workflowFailures += in_array(($prediction['status'] ?? null), ['failed', 'stale', 'timed_out'], true) ? 1 : 0;
+            $answer = trim((string) ($prediction['answer_en'] ?? ''));
+            $productName = data_get($prediction, 'facts.product.name');
+            $productSn = data_get($prediction, 'facts.product.sn') ?? data_get($prediction, 'facts.question.product_sn');
+            $productIdentityRepetitions += (
+                (is_string($productName) && mb_strlen(trim($productName)) >= 5 && mb_stripos($answer, trim($productName)) !== false)
+                || (is_string($productSn) && $productSn !== '' && preg_match('/\b'.preg_quote($productSn, '/').'\b/i', $answer) === 1)
+            ) ? 1 : 0;
+            $unsupportedFollowUpActions += preg_match(
+                '/\b(?:I|we|(?:our|the|production|support|factory) team|the factory|a human (?:agent|representative))\s*'
+                .'(?:will|\x{2019}ll|\'ll|need to)\s*(?:check|verify|review|investigate|look into|follow up|get back|report back|confirm|contact|escalate)\b'
+                .'|\b(?:will be|has been)\s+(?:checked|confirmed|reviewed|escalated|noted|forwarded)\b/iu',
+                $answer,
+            ) === 1 ? 1 : 0;
             $ready += $blocked ? 0 : 1;
             $expected = (array) ($case['expected_intents'] ?? []);
             $actual = (array) ($prediction['intents'] ?? []);
@@ -78,6 +99,8 @@ class ProductQuestionDraftReplaySuite
             'prediction_coverage' => $this->rate($evaluated, $cases->count()),
             'quality_review_coverage' => $this->rate($qualityReviewed, $evaluated),
             'workflow_failure_rate' => $this->rate($workflowFailures, $evaluated),
+            'product_identity_repetition_rate' => $this->rate($productIdentityRepetitions, $evaluated),
+            'unsupported_follow_up_action_rate' => $this->rate($unsupportedFollowUpActions, $evaluated),
             'ready_rate' => $this->rate($ready, $evaluated),
             'accept_as_is_rate' => $this->rate($accepted, $evaluated),
             'missed_intent_rate' => $this->rate($missedIntent, $evaluated),

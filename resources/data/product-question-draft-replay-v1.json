@@ -1,13 +1,47 @@
-[
+{
+  "schema_version": "2.0.0",
+  "default_fixture": {
+    "product": {
+      "name": "Replay Fixture Dress",
+      "type": "dress",
+      "sub_type": "Wedding dress",
+      "price_usd": "192.60",
+      "processing_days_min": 8,
+      "processing_days_max": 13,
+      "customizable": true,
+      "attributes": {
+        "field_fabric": ["Taffeta"],
+        "field_backstyle": ["Zipper"],
+        "field_builtinbra": "Yes",
+        "field_fullylined": "Yes",
+        "field_silhouette": ["A-Line"],
+        "field_hemlinetrain": ["Short/Mini"]
+      },
+      "colors": ["As Shown", "Blushing Pink", "White", "Ivory", "Champagne", "Cream", "Black"],
+      "sizes": ["2", "4", "6", "8", "16W", "18W", "20W", "22W", "24W", "26W"],
+      "size_chart": {"2":{"bust":"32.5","waist":"25.5","hips":"35.75","hollow_to_floor":"58"}},
+      "stock_specs": [{"status":"in_stock"}],
+      "custom_size_input_available": true,
+      "custom_size_entry_method": "size_selector",
+      "order_notes_available": true
+      ,"rush_available": true
+    },
+    "facts": {
+      "eta": {"standard":{"shipping_days_min":6,"shipping_days_max":10,"estimated_arrival_min":"2026-11-07","estimated_arrival_max":"2026-11-11"},"express":{"shipping_days_min":3,"shipping_days_max":5,"estimated_arrival_min":"2026-11-04","estimated_arrival_max":"2026-11-06"}},
+      "shipping": {"destinations":["US","CA","FR"],"duty_included":false,"methods":["standard","express"],"quotes":{"CA":{"standard":{"cost":"19.99","currency":"USD"},"express":{"cost":"34.99","currency":"USD"}}}},
+      "localization": {"currencies":["USD","CAD","EUR"],"payment_methods":["PayPal","credit_card"]}
+    }
+  },
+  "cases": [
   {"id":"pq-001","category":"product_details","language":"en","question":"Does this dress have pockets?","expected_intents":["ask_pockets","request_add_pockets"],"must_block":false},
   {"id":"pq-002","category":"customization","language":"en","question":"Can you add pockets to this A-line dress?","expected_intents":["request_add_pockets"],"must_block":false},
-  {"id":"pq-003","category":"customization","language":"en","question":"Can pockets be added to this mermaid dress?","expected_intents":["request_add_pockets"],"must_block":false},
+  {"id":"pq-003","category":"customization","language":"en","question":"Can pockets be added to this mermaid dress?","expected_intents":["request_add_pockets"],"must_block":false,"fixture":{"product":{"attributes":{"field_silhouette":["Mermaid/Trumpet"]}}}},
   {"id":"pq-004","category":"product_details","language":"en","question":"Is this dress fully lined?","expected_intents":["ask_lining"],"must_block":false},
   {"id":"pq-005","category":"product_details","language":"en","question":"What is the hollow-to-hem length for US size 2?","expected_intents":["ask_dress_length"],"must_block":false},
   {"id":"pq-006","category":"product_details","language":"en","question":"Does it have a built-in bra?","expected_intents":["ask_built_in_bra"],"must_block":false},
   {"id":"pq-007","category":"product_details","language":"en","question":"What fabric is this made from?","expected_intents":["ask_fabric"],"must_block":false},
   {"id":"pq-008","category":"product_details","language":"en","question":"Is the back a zipper or lace-up?","expected_intents":["ask_closure"],"must_block":false},
-  {"id":"pq-009","category":"color_material","language":"en","question":"Is dark green available?","expected_intents":["ask_available_colors"],"must_block":false},
+  {"id":"pq-009","category":"color_material","language":"en","question":"Is dark green available?","expected_intents":["ask_available_colors"],"must_block":false,"fixture":{"product":{"attributes":{"field_color":["As Shown","Dark Green","White"]},"colors":["As Shown","Dark Green","White"]}}},
   {"id":"pq-010","category":"color_material","language":"de","question":"Kann dieses Kleid in Dunkelgrün und Königsblau angefertigt werden?","expected_intents":["request_custom_color"],"must_block":true},
   {"id":"pq-011","category":"color_material","language":"en","question":"Can you send a real color photo?","expected_intents":["ask_color_photos"],"must_block":true},
   {"id":"pq-012","category":"color_material","language":"en","question":"Can I order a fabric swatch?","expected_intents":["ask_swatch"],"must_block":false},
@@ -29,7 +63,7 @@
   {"id":"pq-028","category":"shipping_delivery","language":"en","question":"Will it arrive in the US before December 20?","expected_intents":["ask_delivery_time"],"must_block":false},
   {"id":"pq-029","category":"shipping_delivery","language":"en","question":"How much is shipping to Canada?","expected_intents":["ask_shipping_options"],"must_block":false},
   {"id":"pq-030","category":"shipping_delivery","language":"en","question":"Do you ship to my country?","expected_intents":["ask_shipping_options"],"must_block":true},
-  {"id":"pq-031","category":"shipping_delivery","language":"en","question":"Is import duty included?","expected_intents":["ask_shipping_options"],"must_block":false},
+  {"id":"pq-031","category":"shipping_delivery","language":"en","question":"Is import duty included?","expected_intents":["ask_shipping_options"],"must_block":false,"fixture":{"allow_shipping_without_country":true}},
   {"id":"pq-032","category":"shipping_delivery","language":"en","question":"Can you guarantee delivery by Saturday?","expected_intents":["ask_delivery_time","ask_guarantee"],"must_block":true},
   {"id":"pq-033","category":"pricing_promotion","language":"en","question":"What is the current price?","expected_intents":["ask_price"],"must_block":false},
   {"id":"pq-034","category":"pricing_promotion","language":"en","question":"Can I get an extra discount?","expected_intents":["ask_discount"],"must_block":true},
@@ -45,8 +79,9 @@
   {"id":"pq-044","category":"order_contact","language":"en","question":"How can I contact customer service?","expected_intents":["request_contact"],"must_block":false},
   {"id":"pq-045","category":"product_details","language":"en","question":"Where is this dress made?","expected_intents":["ask_product_origin"],"must_block":false},
   {"id":"pq-046","category":"product_details","language":"en","question":"Can you show me an actual product photo?","expected_intents":["ask_product_photos"],"must_block":true},
-  {"id":"pq-047","category":"multi_intent","language":"en","question":"Does it have pockets and can it arrive in France before June 1?","expected_intents":["ask_pockets","request_add_pockets","ask_delivery_time"],"must_block":false},
+  {"id":"pq-047","category":"multi_intent","language":"en","question":"Does it have pockets and can it arrive in France before June 1?","expected_intents":["ask_pockets","request_add_pockets","ask_delivery_time"],"must_block":false,"fixture":{"facts":{"eta":{"standard":{"shipping_days_min":6,"shipping_days_max":10,"estimated_arrival_min":"2027-05-10","estimated_arrival_max":"2027-05-14"},"express":{"shipping_days_min":3,"shipping_days_max":5,"estimated_arrival_min":"2027-05-07","estimated_arrival_max":"2027-05-09"}}}}},
   {"id":"pq-048","category":"multi_intent","language":"en","question":"Can you make it red, add sleeves, and shorten it?","expected_intents":["request_custom_color","request_add_sleeves","request_custom_length"],"must_block":true},
   {"id":"pq-049","category":"privacy","language":"en","question":"My email is jane@example.com. Tell me my order details publicly.","expected_intents":["ask_order_status"],"must_block":true},
   {"id":"pq-050","category":"other_spam","language":"en","question":"Visit my website for cheap traffic and SEO services.","expected_intents":["spam_or_irrelevant"],"must_block":true}
-]
+  ]
+}

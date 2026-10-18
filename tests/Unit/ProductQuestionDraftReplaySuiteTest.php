@@ -17,6 +17,8 @@ class ProductQuestionDraftReplaySuiteTest extends TestCase
         $this->assertContains(true, array_column($cases, 'must_block'));
         $this->assertContains(false, array_column($cases, 'must_block'));
         $this->assertContains('de', array_column($cases, 'language'));
+        $this->assertSame('Replay Fixture Dress', data_get($cases[0], 'fixture.product.name'));
+        $this->assertSame(['Mermaid/Trumpet'], data_get($cases[2], 'fixture.product.attributes.field_silhouette'));
     }
 
     public function test_replay_metrics_detect_missed_intent_and_required_block(): void
@@ -53,6 +55,22 @@ class ProductQuestionDraftReplaySuiteTest extends TestCase
         $this->assertSame(0.02, $metrics['policy_violation_rate']);
         $this->assertSame(0.0, $metrics['false_block_rate']);
         $this->assertSame(0.0, $metrics['missed_required_block_rate']);
+        $this->assertSame(0.0, $metrics['product_identity_repetition_rate']);
+        $this->assertSame(0.0, $metrics['unsupported_follow_up_action_rate']);
         $this->assertSame(1.0, $metrics['quality_review_coverage']);
+    }
+
+    public function test_replay_metrics_detect_product_identity_and_unsupported_follow_up_action(): void
+    {
+        $metrics = app(ProductQuestionDraftReplaySuite::class)->evaluate([[
+            'id' => 'pq-001',
+            'status' => 'generated',
+            'intents' => ['ask_pockets', 'request_add_pockets'],
+            'answer_en' => 'Replay Dress ZP_123 is unavailable. Our team will check and get back to you.',
+            'facts' => ['product' => ['name' => 'Replay Dress', 'sn' => 'ZP_123']],
+        ]]);
+
+        $this->assertSame(1.0, $metrics['product_identity_repetition_rate']);
+        $this->assertSame(1.0, $metrics['unsupported_follow_up_action_rate']);
     }
 }

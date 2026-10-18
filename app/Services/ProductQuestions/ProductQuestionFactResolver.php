@@ -22,10 +22,12 @@ class ProductQuestionFactResolver
     {
         $question->loadMissing('site');
         $site = $question->site;
+        $fixture = $this->replayFixture($question);
         $intents = array_values(array_filter($plan['intents'] ?? [], 'is_string'));
         $groups = $this->contract->factGroupsForIntents($intents);
         $facts = [
             'site' => [
+                'site_key' => $site->site_key,
                 'brand_name' => $site->brand_name,
                 'public_base_url' => rtrim((string) $site->public_base_url, '/'),
                 'customer_service_email' => $site->customer_service_email,
@@ -100,8 +102,17 @@ class ProductQuestionFactResolver
                     'custom_size_input_available' => $this->customSizeInputAvailable($product),
                     'custom_size_entry_method' => $this->customSizeEntryMethod($product),
                     'order_notes_available' => data_get($product->options, 'order_notes_available'),
+                    'rush_available' => data_get($product->options, 'rush_available'),
                     'synced_at' => $product->synced_at?->toIso8601String(),
                 ];
+                if (is_array($fixture['product'] ?? null)) {
+                    $facts['product'] = array_replace_recursive($facts['product'], $fixture['product']);
+                    $sources[] = [
+                        'fact_group' => 'product.replay_fixture',
+                        'source' => 'product-question-draft-replay-suite',
+                        'captured_at' => now()->toIso8601String(),
+                    ];
+                }
                 $length = $this->dressLengths->lookup(
                     data_get($facts, 'product.attributes.field_hemlinetrain'),
                     $this->requestedSize($question->question),
@@ -133,19 +144,29 @@ class ProductQuestionFactResolver
         if (in_array('eta', $groups, true)) {
             if ($question->sn === '' || $countryCode === null) {
                 $missing[] = $question->sn === '' ? 'product_sn_for_eta' : 'country_code_for_eta';
+            } elseif (is_array(data_get($fixture, 'facts.eta'))) {
+                $this->captureFixtureFact('eta', data_get($fixture, 'facts.eta'), $facts, $sources);
             } else {
                 $this->captureLiveFact('eta', fn () => $this->client->productEta($site, $question->sn, $countryCode), $facts, $sources, $missing, $safetyFlags);
             }
         }
         if (in_array('shipping', $groups, true)) {
-            if ($countryCode === null) {
+            if ($countryCode === null && data_get($fixture, 'allow_shipping_without_country') === true) {
+                $this->captureFixtureFact('shipping', (array) data_get($fixture, 'facts.shipping'), $facts, $sources);
+            } elseif ($countryCode === null) {
                 $missing[] = 'country_code_for_shipping';
+            } elseif (is_array(data_get($fixture, 'facts.shipping'))) {
+                $this->captureFixtureFact('shipping', data_get($fixture, 'facts.shipping'), $facts, $sources);
             } else {
                 $this->captureLiveFact('shipping', fn () => $this->client->shippingOptions($site, $countryCode), $facts, $sources, $missing, $safetyFlags);
             }
         }
         if (in_array('localization', $groups, true)) {
-            $this->captureLiveFact('localization', fn () => $this->client->localizationOptions($site), $facts, $sources, $missing, $safetyFlags);
+            if (is_array(data_get($fixture, 'facts.localization'))) {
+                $this->captureFixtureFact('localization', data_get($fixture, 'facts.localization'), $facts, $sources);
+            } else {
+                $this->captureLiveFact('localization', fn () => $this->client->localizationOptions($site), $facts, $sources, $missing, $safetyFlags);
+            }
         }
         if (in_array('order', $groups, true)) {
             $missing[] = 'private_order_lookup';
@@ -184,6 +205,33 @@ class ProductQuestionFactResolver
             $missing[] = $group.'_api_result';
             $safetyFlags[] = $group.' fact lookup failed: '.$exception->getMessage();
         }
+    }
+
+    /** @param array<string,mixed> $value
+     * @param  array<string,mixed>  $facts
+     * @param  list<array<string,mixed>>  $sources
+     */
+    private function captureFixtureFact(string $group, array $value, array &$facts, array &$sources): void
+    {
+        $facts[$group] = $value;
+        $sources[] = [
+            'fact_group' => $group,
+            'source' => 'product-question-draft-replay-suite',
+            'captured_at' => now()->toIso8601String(),
+            'response_hash' => hash('sha256', json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function replayFixture(ProductQuestion $question): array
+    {
+        if ($question->name !== '__CSI_N8N_REPLAY__' || ! str_ends_with((string) $question->email, '@replay.invalid')) {
+            return [];
+        }
+
+        $fixture = data_get($question->raw_payload, '_replay.fixture');
+
+        return is_array($fixture) ? $fixture : [];
     }
 
     private function customSizeInputAvailable(CommerceProduct $product): ?bool

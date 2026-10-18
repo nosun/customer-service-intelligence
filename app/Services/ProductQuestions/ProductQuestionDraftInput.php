@@ -45,6 +45,10 @@ class ProductQuestionDraftInput
                 'remote_present' => $question->remote_present,
                 'remote_updated_at' => $question->remote_updated_at?->toIso8601String(),
                 'updated_at' => $question->updated_at?->toIso8601String(),
+                'replay_fixture_hash' => $question->name === '__CSI_N8N_REPLAY__'
+                    && is_array(data_get($question->raw_payload, '_replay.fixture'))
+                    ? hash('sha256', json_encode(data_get($question->raw_payload, '_replay.fixture'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR))
+                    : null,
             ],
             'analysis' => $question->analysis === null ? null : [
                 'id' => $question->analysis->id,

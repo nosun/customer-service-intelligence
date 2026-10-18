@@ -7,7 +7,6 @@ use App\Admin\Controllers\ConversationController;
 use App\Admin\Controllers\HomeController;
 use App\Admin\Controllers\KnowledgeArticleController;
 use App\Admin\Controllers\ProductQuestionController;
-use App\Admin\Controllers\ProductQuestionFactoryCapabilityController;
 use App\Admin\Controllers\ProductQuestionPolicyController;
 use Encore\Admin\Facades\Admin;
 use Illuminate\Routing\Router;
@@ -48,9 +47,6 @@ Route::group([
     $router->post('product-questions/{questionId}/confirm-reply', [ProductQuestionController::class, 'confirmReply'])->name('product-questions.confirm-reply');
     $router->post('product-questions/{questionId}/review', [ProductQuestionController::class, 'review'])->name('product-questions.review');
     $router->post('product-questions/{questionId}/review-analysis', [ProductQuestionController::class, 'reviewAnalysis'])->name('product-questions.review-analysis');
-    $router->get('product-question-factory-capabilities', [ProductQuestionFactoryCapabilityController::class, 'index'])->name('product-question-factory-capabilities.index');
-    $router->get('product-question-factory-capabilities/{id}', [ProductQuestionFactoryCapabilityController::class, 'show'])->name('product-question-factory-capabilities.show');
-    $router->put('product-question-factory-capabilities/{id}', [ProductQuestionFactoryCapabilityController::class, 'update'])->name('product-question-factory-capabilities.update');
     $router->get('product-question-policies', [ProductQuestionPolicyController::class, 'index'])->name('product-question-policies.index');
     $router->get('product-question-policies/{id}', [ProductQuestionPolicyController::class, 'show'])->name('product-question-policies.show');
     $router->post('product-question-policies/{id}/review', [ProductQuestionPolicyController::class, 'review'])->name('product-question-policies.review');

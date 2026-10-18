@@ -22,6 +22,7 @@ class N8nProductQuestionDraftService
     public function __construct(
         private readonly ProductQuestionFactResolver $facts,
         private readonly ProductQuestionFactContract $contract,
+        private readonly ProductQuestionDraftPlanGuard $planGuard,
         private readonly ProductQuestionDraftInput $input,
         private readonly WorkflowRegistry $workflows,
     ) {}
@@ -91,6 +92,8 @@ class N8nProductQuestionDraftService
                 'applicability' => $article->applicability,
                 'automation_tier' => $article->automation_tier,
             ])->values()->all(),
+            'supported_intents' => $this->planGuard->supportedIntents(),
+            'allowed_actions' => $workflow->allowed_actions ?? [],
             'fact_contract_version' => ProductQuestionFactContract::VERSION,
             'fact_contract' => $this->contract->definitions(),
             'reply_style' => [
@@ -195,8 +198,29 @@ class N8nProductQuestionDraftService
         $review = $this->enforceCustomSizeWorkflow($question, $plan, $facts, $review);
         $review = $this->enforcePocketPolicy($question, $plan, $facts, $review);
         $review = $this->enforceDressLengthWorkflow($plan, $facts, $review);
-        $answerEn = trim((string) ($review['final_answer_en'] ?? ''));
-        $answerLocalized = trim((string) ($review['final_answer_localized'] ?? ''));
+        $review = $this->enforceDirectFactResponses($question, $plan, $facts, $review);
+        $verifiedPolicyIntents = $this->availablePolicies($question)
+            ->map(fn (KnowledgeArticle $article): string => $this->intent($article, $question->site->site_key))
+            ->values()
+            ->all();
+        $review = $this->enforcePostProductionCancellationPolicy(
+            $question,
+            $plan,
+            $facts,
+            $review,
+            $verifiedPolicyIntents,
+        );
+        if (version_compare($request->workflow_version, '1.2.0', '>=')) {
+            $review = $this->enforceConservativeBlockingResponse($plan, $facts, $missing, $review, $verifiedPolicyIntents);
+        }
+        $answerEn = $this->sanitizeUnsupportedFollowUpActions(
+            $this->sanitizeProductIdentity(trim((string) ($review['final_answer_en'] ?? '')), $facts, $question),
+            $workflow->allowed_actions ?? [],
+        );
+        $answerLocalized = $this->sanitizeUnsupportedFollowUpActions(
+            $this->sanitizeProductIdentity(trim((string) ($review['final_answer_localized'] ?? '')), $facts, $question),
+            $workflow->allowed_actions ?? [],
+        );
         $safetyFlags = array_values(array_unique(array_filter([
             ...((array) ($payload['safety_flags'] ?? [])),
             ...((array) ($review['safety_flags'] ?? [])),
@@ -229,6 +253,22 @@ class N8nProductQuestionDraftService
         if ($this->repeatsProductIdentity($answerEn.' '.$answerLocalized, $facts, $question)) {
             $status = 'blocked';
             $safetyFlags[] = 'The answer unnecessarily repeats the product title or identifier.';
+        }
+        if ($this->containsUnsupportedFollowUpAction($answerEn.' '.$answerLocalized, $workflow->allowed_actions ?? [])) {
+            $status = 'blocked';
+            $safetyFlags[] = 'The answer promises a follow-up action that this workflow cannot execute.';
+        }
+        if (version_compare($request->workflow_version, '1.2.0', '>=')) {
+            $blockingReasons = $this->planGuard->blockingReasons($plan['intents'], $facts, $missing, $verifiedPolicyIntents);
+            if ($blockingReasons !== []) {
+                $status = 'blocked';
+                $safetyFlags = [...$safetyFlags, ...$blockingReasons];
+            }
+            $coveredIntents = array_values(array_filter((array) ($review['covered_intents'] ?? []), 'is_string'));
+            if (array_diff($plan['intents'], $coveredIntents) !== []) {
+                $status = 'blocked';
+                $safetyFlags[] = 'The final answer does not cover every planned intent.';
+            }
         }
 
         $knowledgeArticleIds = collect((array) ($payload['policies'] ?? []))
@@ -348,9 +388,7 @@ class N8nProductQuestionDraftService
     private function validatedPlan(ProductQuestion $question, array $plan): array
     {
         $question->loadMissing('site');
-        $allowed = $this->availablePolicies($question)
-            ->map(fn (KnowledgeArticle $article): string => $this->intent($article, $question->site->site_key))
-            ->all();
+        $allowed = $this->planGuard->supportedIntents();
         $rawIntents = (array) ($plan['intents'] ?? []);
         if (! array_is_list($rawIntents)) {
             $rawIntents = array_keys($rawIntents);
@@ -367,7 +405,7 @@ class N8nProductQuestionDraftService
             }
         }
         if ($this->asksForPetiteSize($questionText)) {
-            $intents = array_values(array_diff($intents, ['ask_plus_size']));
+            $intents = array_values(array_diff($intents, ['ask_in_stock', 'ask_plus_size']));
             foreach (['ask_size_recommendation', 'request_custom_size'] as $intent) {
                 if (in_array($intent, $allowed, true)) {
                     $intents[] = $intent;
@@ -387,10 +425,24 @@ class N8nProductQuestionDraftService
         ) {
             $intents[] = 'request_add_pockets';
         }
-        $intents = array_values(array_unique($intents));
+        $intents = $this->planGuard->normalizeIntents($questionText, array_values(array_unique($intents)));
         $unmatchedRequests = array_values(array_filter((array) ($plan['unmatched_requests'] ?? []), 'is_string'));
-        if (count($intents) > 4 || ($intents === [] && $unmatchedRequests === [])) {
-            throw new RuntimeException('Planner must select up to four verified policy intents or identify an unmatched request.');
+        if (in_array('ask_how_to_order', $intents, true)
+            && preg_match('/\bproduct page\b.{0,60}\b(?:open|load)\b/i', $questionText) === 1
+        ) {
+            $unmatchedRequests = array_values(array_filter(
+                $unmatchedRequests,
+                fn (string $request): bool => preg_match('/\b(?:product page|open|load|technical_issue|browsing)\b/i', $request) !== 1,
+            ));
+        }
+        if ($this->asksForPetiteSize($questionText)) {
+            $unmatchedRequests = array_values(array_filter(
+                $unmatchedRequests,
+                fn (string $request): bool => preg_match('/\bpetite\b/i', $request) !== 1,
+            ));
+        }
+        if (count($intents) > 6 || ($intents === [] && $unmatchedRequests === [])) {
+            throw new RuntimeException('Planner must select up to six supported intents or identify an unmatched request.');
         }
         $language = strtolower((string) ($plan['customer_language'] ?? 'en'));
         if (preg_match('/^[a-z]{2}$/', $language) !== 1) {
@@ -405,11 +457,16 @@ class N8nProductQuestionDraftService
             'intents' => $intents,
             'customer_language' => $language,
             'country_code' => $country === null ? null : strtoupper($country),
-            'event_date' => is_string($plan['event_date'] ?? null) ? $plan['event_date'] : null,
+            'event_date' => $this->eventDate($questionText, $plan['event_date'] ?? null),
             'requested_currency' => is_string($plan['requested_currency'] ?? null) ? strtoupper($plan['requested_currency']) : null,
             'requested_language' => is_string($plan['requested_language'] ?? null) ? strtolower($plan['requested_language']) : null,
             'requires_private_reply' => (bool) ($plan['requires_private_reply'] ?? false),
             'unmatched_requests' => $unmatchedRequests,
+            'clauses' => $this->planGuard->normalizeClauses(
+                $questionText,
+                array_values(array_filter((array) ($plan['clauses'] ?? []), 'is_array')),
+                $intents,
+            ),
             'summary' => is_string($plan['summary'] ?? null) ? $plan['summary'] : '',
         ];
     }
@@ -449,7 +506,9 @@ class N8nProductQuestionDraftService
 
         $policyText = json_encode($policies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-        return ! is_string($policyText) || preg_match($contactPattern, $policyText) !== 1;
+        return ! is_string($policyText)
+            || (preg_match($contactPattern, $policyText) !== 1
+                && ! str_contains($policyText, 'site.customer_service_email'));
     }
 
     /** @param array<string, mixed> $facts */
@@ -459,6 +518,318 @@ class N8nProductQuestionDraftService
 
         return (is_string($productName) && mb_strlen(trim($productName)) >= 5 && mb_stripos($answer, trim($productName)) !== false)
             || ($question->sn !== '' && preg_match('/\b'.preg_quote($question->sn, '/').'\b/i', $answer) === 1);
+    }
+
+    /** @param array<string,mixed> $facts */
+    private function sanitizeProductIdentity(string $answer, array $facts, ProductQuestion $question): string
+    {
+        if ($answer === '') {
+            return '';
+        }
+        $productName = data_get($facts, 'product.name');
+        $productUrl = data_get($facts, 'product.product_url');
+        if (is_string($productName) && mb_strlen(trim($productName)) >= 5) {
+            $answer = preg_replace('/'.preg_quote(trim($productName), '/').'/iu', 'this item', $answer) ?? $answer;
+        }
+        if (is_string($productUrl) && $productUrl !== '') {
+            $answer = str_ireplace($productUrl, '', $answer);
+        }
+        if ($question->sn !== '') {
+            $quoted = preg_quote($question->sn, '/');
+            $answer = preg_replace('/\b(?:product\s+)?(?:SN\s*[:#]?\s*)?'.$quoted.'\b/iu', 'this item', $answer) ?? $answer;
+        }
+        $answer = preg_replace('/\bthis item\s+(?:product page|page)\b/iu', 'the product page', $answer) ?? $answer;
+        $answer = preg_replace('/[ \t]{2,}/', ' ', $answer) ?? $answer;
+        $answer = preg_replace('/\s+([,.;:!?])/', '$1', $answer) ?? $answer;
+
+        return trim($answer);
+    }
+
+    /** @param list<string> $allowedActions */
+    private function containsUnsupportedFollowUpAction(string $answer, array $allowedActions): bool
+    {
+        if ($allowedActions !== []) {
+            return false;
+        }
+
+        return preg_match(
+            '/\b(?:I|we|(?:our|the|production|support|factory) team|the factory|a human (?:agent|representative))\s*(?:will|\x{2019}ll|\'ll|need to)\s*'
+            .'(?:check|verify|review|investigate|look into|follow up|get back|report back|confirm|contact|escalate)\b'
+            .'|\b(?:will be|has been)\s+(?:checked|confirmed|reviewed|escalated|noted|forwarded)\b/iu',
+            $answer,
+        ) === 1;
+    }
+
+    /** @param list<string> $allowedActions */
+    private function sanitizeUnsupportedFollowUpActions(string $answer, array $allowedActions): string
+    {
+        if ($answer === '' || $allowedActions !== []) {
+            return $answer;
+        }
+        $sentences = preg_split('/(?<=[.!?])\s+/u', $answer) ?: [$answer];
+        $sentences = array_values(array_filter($sentences, function (string $sentence): bool {
+            if ($this->containsUnsupportedFollowUpAction($sentence, [])) {
+                return false;
+            }
+
+            return preg_match('/\b(?:we can|we can separately|let us)\s+(?:check|verify|review|investigate|look into|follow up|double-check|confirm|know)\b/iu', $sentence) !== 1;
+        }));
+
+        return trim(implode(' ', $sentences));
+    }
+
+    private function eventDate(string $question, mixed $planned): ?string
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $planned) === 1) {
+            $plannedDate = now()->createFromFormat('Y-m-d', (string) $planned)?->startOfDay();
+            if ($plannedDate !== null && $plannedDate->greaterThanOrEqualTo(now()->startOfDay())) {
+                return $plannedDate->toDateString();
+            }
+        }
+        if (preg_match('/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\b/i', $question, $matches) !== 1) {
+            return is_string($planned) ? $planned : null;
+        }
+        $candidate = now()->createFromFormat('F j Y', ucfirst(strtolower($matches[1])).' '.$matches[2].' '.now()->year)?->startOfDay();
+        if ($candidate === null) {
+            return is_string($planned) ? $planned : null;
+        }
+        if ($candidate->isBefore(now()->startOfDay())) {
+            $candidate->addYear();
+        }
+
+        return $candidate->toDateString();
+    }
+
+    /**
+     * @param  array<string, mixed>  $plan
+     * @param  array<string, mixed>  $facts
+     * @param  array<string, mixed>  $review
+     * @param  list<string>  $verifiedPolicyIntents
+     * @return array<string, mixed>
+     */
+    private function enforcePostProductionCancellationPolicy(
+        ProductQuestion $question,
+        array $plan,
+        array $facts,
+        array $review,
+        array $verifiedPolicyIntents,
+    ): array {
+        $publicBaseUrl = rtrim((string) data_get($facts, 'site.public_base_url'), '/');
+        $customerServiceEmail = (string) data_get($facts, 'site.customer_service_email');
+        if ($plan['intents'] !== ['ask_cancellation_policy']
+            || ! in_array('ask_cancellation_policy', $verifiedPolicyIntents, true)
+            || preg_match('/\b(?:cancel|cancellation)\b.*\b(?:after|once)\b.*\bproduction\b|\bproduction\b.*\b(?:start|begun)\b/iu', $question->question) !== 1
+            || filter_var($publicBaseUrl, FILTER_VALIDATE_URL) === false
+            || filter_var($customerServiceEmail, FILTER_VALIDATE_EMAIL) === false
+        ) {
+            return $review;
+        }
+
+        $review['approved'] = true;
+        $review['must_block'] = false;
+        $review['covered_intents'] = ['ask_cancellation_policy'];
+        $review['uncovered_intents'] = [];
+        $review['final_answer_en'] = sprintf(
+            'You may request cancellation after production has started. Any refundable amount is determined under our current Cancellation Policy using the actual production start time confirmed with the factory for your order: %s/article/cancellation-policy.html. Please email %s with your order number and cancellation reason. The exact refund breakdown must be verified before cancellation. We cannot promise cancellation-processing or bank-posting times; bank timing depends on your card issuer.',
+            $publicBaseUrl,
+            $customerServiceEmail,
+        );
+        $review['final_answer_localized'] = $plan['customer_language'] === 'en'
+            ? $review['final_answer_en']
+            : ($review['final_answer_localized'] ?? null);
+        $review['safety_flags'] = array_values(array_filter(
+            (array) ($review['safety_flags'] ?? []),
+            fn (mixed $flag): bool => is_string($flag) && $flag !== 'no_meaningful_localization_applied',
+        ));
+
+        return $review;
+    }
+
+    /** @param array<string,mixed> $plan
+     * @param  array<string,mixed>  $facts
+     * @param  array<string,mixed>  $review
+     * @return array<string,mixed>
+     */
+    private function enforceDirectFactResponses(ProductQuestion $question, array $plan, array $facts, array $review): array
+    {
+        $intents = $plan['intents'];
+        $answer = null;
+        if ($intents === ['ask_fabric'] && filled(data_get($facts, 'product.attributes.field_fabric.0'))) {
+            $answer = 'This dress is made from '.data_get($facts, 'product.attributes.field_fabric.0').'.';
+        } elseif ($intents === ['ask_built_in_bra'] && filled(data_get($facts, 'product.attributes.field_builtinbra'))) {
+            $answer = strtolower((string) data_get($facts, 'product.attributes.field_builtinbra')) === 'yes'
+                ? 'Yes, this dress includes a built-in bra.'
+                : 'This dress does not include a built-in bra.';
+        } elseif ($intents === ['ask_closure'] && filled(data_get($facts, 'product.attributes.field_backstyle.0'))) {
+            $answer = 'The back closes with '.strtolower((string) data_get($facts, 'product.attributes.field_backstyle.0')).'.';
+        } elseif ($intents === ['ask_lining'] && filled(data_get($facts, 'product.attributes.field_fullylined'))) {
+            $answer = strtolower((string) data_get($facts, 'product.attributes.field_fullylined')) === 'yes'
+                ? 'Yes, this dress is fully lined.'
+                : 'This dress is not fully lined.';
+        } elseif ($intents === ['ask_size_chart']) {
+            $answer = 'The Size Guide on the product page contains the current size chart.';
+        } elseif ($intents === ['ask_how_to_order'] && preg_match('/\bproduct page\b.{0,60}\b(?:open|load)\b/i', $question->question) === 1) {
+            $answer = 'Please refresh the page, then try a private browsing window or a different browser. If it still does not load, include the page URL, error message, and a screenshot with sensitive information hidden when requesting technical support.';
+        } elseif ($intents === ['ask_in_stock'] && data_get($facts, 'product.stock_specs.0.status') === 'in_stock') {
+            $size = data_get($facts, 'product.stock_specs.0.size');
+            $answer = filled($size)
+                ? 'The current stock snapshot lists Size '.$size.' as in stock.'
+                : 'The current stock snapshot lists this item as in stock.';
+        } elseif ($intents === ['ask_plus_size']
+            && preg_match('/\b(?:US\s*)?(\d{1,2}W)\b/i', $question->question, $matches) === 1
+            && collect((array) data_get($facts, 'product.sizes', []))->contains(fn (mixed $size): bool => strcasecmp((string) $size, $matches[1]) === 0)
+        ) {
+            $answer = 'Yes, US Size '.strtoupper($matches[1]).' is listed as an available size option.';
+        } elseif ($intents === ['request_rush_order'] && data_get($facts, 'product.rush_available') === true) {
+            $answer = 'A rush option is available for this item. Select it from the available service options at checkout.';
+        } elseif ($intents === ['ask_shipping_options'] && $this->asksAboutImportDuty($question->question)
+            && is_bool(data_get($facts, 'shipping.duty_included'))
+        ) {
+            $answer = data_get($facts, 'shipping.duty_included')
+                ? 'Import duty is included in the current shipping charge.'
+                : 'Import duty is not included in the shipping charge and may be collected separately by local customs.';
+        } elseif ($intents === ['ask_shipping_options'] && filled(data_get($facts, 'shipping.quotes.'.($plan['country_code'] ?? '').'.standard.cost'))) {
+            $quote = data_get($facts, 'shipping.quotes.'.$plan['country_code'].'.standard');
+            $answer = 'Standard shipping to '.$plan['country_code'].' is '.$quote['cost'].' '.$quote['currency'].'. The final amount is shown at checkout.';
+        } elseif ($intents === ['ask_size_recommendation'] && preg_match('/\b(\d+(?:\.\d+)?)\s*(?:inch|inches|in|\x{2033})\s+bust\b/iu', $question->question, $matches) === 1) {
+            $answer = $this->sizeRecommendation((float) $matches[1], (array) data_get($facts, 'product.size_chart', []));
+        } elseif (in_array('ask_delivery_time', $intents, true)
+            && is_string($plan['event_date'] ?? null)
+            && is_string(data_get($facts, 'eta.standard.estimated_arrival_min'))
+            && is_string(data_get($facts, 'eta.standard.estimated_arrival_max'))
+        ) {
+            $arrivalMax = now()->createFromFormat('Y-m-d', data_get($facts, 'eta.standard.estimated_arrival_max'))?->startOfDay();
+            $eventDate = now()->createFromFormat('Y-m-d', $plan['event_date'])?->startOfDay();
+            if ($arrivalMax !== null && $eventDate !== null) {
+                $delivery = $arrivalMax->isBefore($eventDate)
+                    ? 'The current standard estimate is before your event date, but it is not guaranteed.'
+                    : 'The current standard estimate is not before your event date.';
+                $answer = sprintf(
+                    '%s The estimated arrival range is %s to %s.',
+                    $delivery,
+                    data_get($facts, 'eta.standard.estimated_arrival_min'),
+                    data_get($facts, 'eta.standard.estimated_arrival_max'),
+                );
+                if (in_array('ask_pockets', $intents, true) && in_array('request_add_pockets', $intents, true)) {
+                    $answer = 'This dress does not come with pockets by default, but pockets can be added at no extra charge. Write “Please add pockets” in the Order Notes section at checkout. '.$answer;
+                }
+            }
+        }
+        if ($answer === null) {
+            return $review;
+        }
+
+        $review['approved'] = true;
+        $review['must_block'] = false;
+        $review['covered_intents'] = $intents;
+        $review['uncovered_intents'] = [];
+        $review['final_answer_en'] = $answer;
+        $review['final_answer_localized'] = $plan['customer_language'] === 'en' ? $answer : null;
+
+        return $review;
+    }
+
+    /** @param array<string,mixed> $chart */
+    private function sizeRecommendation(float $bust, array $chart): ?string
+    {
+        $matches = collect($chart)->map(function (mixed $measurements, string|int $size) use ($bust): ?array {
+            $sizeBust = data_get($measurements, 'bust');
+
+            return is_numeric($sizeBust) ? ['size' => (string) $size, 'bust' => (float) $sizeBust, 'difference' => abs((float) $sizeBust - $bust)] : null;
+        })->filter()->sortBy('difference')->take(2)->values();
+        if ($matches->isEmpty()) {
+            return null;
+        }
+        $first = $matches[0];
+        $second = $matches->get(1);
+        if ($second !== null && abs($first['difference'] - $second['difference']) < 0.001) {
+            return sprintf(
+                'A %.1f-inch bust falls between US Sizes %s (%.1f in) and %s (%.1f in). Compare your waist and hip measurements with the Size Guide before choosing.',
+                $bust,
+                $first['size'],
+                $first['bust'],
+                $second['size'],
+                $second['bust'],
+            );
+        }
+
+        return sprintf(
+            'For a %.1f-inch bust, US Size %s is the closest chart match at %.1f inches. Compare your waist and hip measurements before choosing.',
+            $bust,
+            $first['size'],
+            $first['bust'],
+        );
+    }
+
+    private function asksAboutImportDuty(string $question): bool
+    {
+        return preg_match('/\b(?:import )?(?:duty|duties|customs?)\b/i', $question) === 1;
+    }
+
+    /** @param array<string,mixed> $plan
+     * @param  array<string,mixed>  $facts
+     * @param  list<string>  $missing
+     * @param  array<string,mixed>  $review
+     * @return array<string,mixed>
+     */
+    private function enforceConservativeBlockingResponse(
+        array $plan,
+        array $facts,
+        array $missing,
+        array $review,
+        array $verifiedPolicyIntents,
+    ): array {
+        $reasons = $this->planGuard->blockingReasons($plan['intents'], $facts, $missing, $verifiedPolicyIntents);
+        if ($reasons === []) {
+            return $review;
+        }
+
+        $responses = [];
+        foreach ($plan['intents'] as $intent) {
+            $response = match ($intent) {
+                'ask_product_photos' => 'The available images are catalog images; they do not confirm that additional actual-product photos are available.',
+                'ask_color_photos' => 'The available images are catalog images; they do not confirm that additional real-color photos are available.',
+                'ask_fit' => 'The available product facts do not confirm whether this style runs small or large. Please compare your measurements with the size chart.',
+                'ask_swatch' => 'Fabric swatch availability is not covered by a verified policy yet, so it cannot be confirmed in this draft.',
+                'request_custom_color' => 'The requested custom color cannot be confirmed as a manufacturing option from the available facts.',
+                'request_custom_length' => 'The requested length change cannot be confirmed from the available product facts.',
+                'request_remove_train' => 'The requested train alteration cannot be confirmed from the available product facts.',
+                'request_add_sleeves', 'request_remove_sleeves' => 'The requested sleeve alteration cannot be confirmed from the available product facts.',
+                'request_change_neckline', 'request_change_back' => 'The requested structural alteration cannot be confirmed from the available product facts.',
+                'request_add_train', 'request_mix_designs', 'request_other_customization' => 'This design customization cannot be confirmed from the available product facts.',
+                'ask_restock' => 'No verified restock date is available in the current product facts.',
+                'ask_discount' => 'No verified policy authorizes an extra discount, so one cannot be promised in this draft.',
+                'ask_guarantee' => 'A guaranteed delivery date cannot be promised; checkout dates are estimates.',
+                'ask_cancellation_policy' => 'Cancellation after production starts is not covered by a verified policy yet, so the applicable terms cannot be confirmed in this draft.',
+                'ask_tracking' => 'Order-specific tracking details cannot be verified in public Q&A; this draft must remain blocked for private human review.',
+                'ask_refund' => 'Order-specific refund details cannot be verified in public Q&A; this draft must remain blocked for private human review.',
+                'ask_order_status' => 'Order-specific status details cannot be verified in public Q&A; this draft must remain blocked for private human review.',
+                'spam_or_irrelevant' => 'This message is unrelated to product support and should not receive a public reply.',
+                default => null,
+            };
+            if ($response !== null) {
+                $responses[] = $response;
+            }
+        }
+        if (in_array('missing_required_live_fact', $reasons, true)) {
+            $responses[] = 'The required destination or current live fact is missing, so this request cannot be confirmed yet.';
+        }
+        if ($responses === []) {
+            return $review;
+        }
+
+        $review['approved'] = false;
+        $review['must_block'] = true;
+        $review['covered_intents'] = $plan['intents'];
+        $review['uncovered_intents'] = [];
+        $review['final_answer_en'] = implode(' ', array_values(array_unique($responses)));
+        $review['final_answer_localized'] = null;
+        $review['safety_flags'] = array_values(array_unique([
+            ...array_filter((array) ($review['safety_flags'] ?? []), 'is_string'),
+            ...$reasons,
+        ]));
+
+        return $review;
     }
 
     private function asksWhetherProductHasPockets(string $question): bool
@@ -564,6 +935,7 @@ class N8nProductQuestionDraftService
     {
         if (! in_array('ask_pockets', $plan['intents'], true)
             || ! in_array('request_add_pockets', $plan['intents'], true)
+            || array_diff($plan['intents'], ['ask_pockets', 'request_add_pockets']) !== []
             || ! $this->asksWhetherProductHasPockets($question->question)
             || data_get($facts, 'product.type') !== 'dress'
         ) {

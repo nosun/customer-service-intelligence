@@ -9,9 +9,12 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthenticateN8nInternalApi
 {
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $scope = 'shared'): Response
     {
-        $expected = trim((string) config('services.n8n.internal_api_token'));
+        $expected = trim((string) config("services.n8n.{$scope}_internal_api_token"));
+        if ($expected === '') {
+            $expected = trim((string) config('services.n8n.internal_api_token'));
+        }
         $actual = trim((string) $request->bearerToken());
 
         if ($expected === '') {

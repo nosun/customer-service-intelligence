@@ -15,7 +15,7 @@ class ProductQuestionFactContract
                 'freshness' => 'configuration',
                 'public' => true,
                 'required' => ['brand_name', 'public_base_url'],
-                'optional' => ['customer_service_email', 'operates_online_only', 'live_chat_enabled', 'public_phone', 'try_on_policy', 'physical_store_info'],
+                'optional' => ['site_key', 'customer_service_email', 'operates_online_only', 'live_chat_enabled', 'public_phone', 'try_on_policy', 'physical_store_info'],
             ],
             'product' => ['source' => 'commerce_products', 'freshness' => 'latest_sync', 'public' => true, 'required' => ['sn', 'name']],
             'eta' => ['source' => 'tradeManager products/{sn}/eta', 'freshness' => 'live', 'public' => true, 'requires' => ['product_sn', 'country_code']],
@@ -38,11 +38,15 @@ class ProductQuestionFactContract
                 'ask_available_colors', 'ask_color_match', 'ask_color_photos', 'ask_fabric',
                 'ask_swatch', 'ask_size_chart', 'ask_fit', 'ask_plus_size', 'ask_in_stock',
                 'ask_restock', 'request_add_pockets' => ['product'],
+                'request_add_sleeves', 'request_remove_sleeves', 'request_change_neckline',
+                'request_change_back', 'request_remove_train', 'request_add_train',
+                'request_mix_designs', 'request_other_customization' => ['product'],
                 'ask_price' => ['product', 'localization'],
-                'ask_delivery_time', 'request_rush_order' => ['eta'],
+                'ask_delivery_time' => ['eta'],
+                'request_rush_order' => ['product'],
                 'ask_shipping_options' => ['shipping'],
                 'ask_payment' => ['localization'],
-                'ask_order_status' => ['order'],
+                'ask_order_status', 'ask_tracking', 'ask_refund' => ['order'],
                 default => [],
             }];
         }
@@ -52,6 +56,6 @@ class ProductQuestionFactContract
 
     public function requiresPrivateReply(array $intents): bool
     {
-        return in_array('ask_order_status', $intents, true);
+        return array_intersect(['ask_order_status', 'ask_tracking', 'ask_refund'], $intents) !== [];
     }
 }

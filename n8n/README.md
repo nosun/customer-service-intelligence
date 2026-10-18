@@ -2,10 +2,18 @@
 
 本目录与 Laravel 代码位于同一 Git 仓库，运行产品问答工作流：
 
-- `analysis/qa-analysis-v1`：选择问答并调用 Laravel 的既有分析服务；
-- `work/qa-draft-agent-v1`：当前发布版本 `1.1.0`，由 Laravel 后台异步触发，执行分类、事实解析、Policy 检索、英文生成、目标语言翻译、Review、单次 Repair、Final Review，并把草稿回写 Laravel。
+- `analysis/qa-analysis-v1`：选择问答并调用与批量命令相同的 `ProductQuestionBatchAnalyzer`；单条重跑只是批量分析器的一条记录，不再维护第二套生产分析入口；
+- `work/qa-draft-agent-v1`：当前发布版本 `1.1.0`；候选版本 `1.2.0` 处于 `evaluating`。它由 Laravel 后台异步触发，执行 clause 拆分与分类、事实解析、Policy 检索、英文生成、目标语言翻译、Review、单次 Repair、Final Review，并把草稿回写 Laravel。
+
+`1.2.0` 增加确定性回放 fixture、缺失意图纠正、多意图覆盖校验、风险矩阵、商品标题/SN 清理和无 Action Proposal 时的后续动作承诺拦截。Policy 未经人工确认时只生成保守的 blocked Draft，不会被当成 verified Policy 使用。
 
 n8n 负责 AI 节点与流程编排。业务数据、MiniMax 凭据、Policy、事实白名单、最终安全校验和 Draft 审计仍由 Laravel 管理；工作流不会调用 Preview 或 Confirm。
+
+运行中心与分析中心当前采用逻辑隔离、同仓部署：`work/*` 只读取已发布的 verified Policy；`analysis/*` 只生成分析结果、证据和候选，不发布 Policy，也不执行业务写操作。生产环境应把两类 Workflow 放入不同 n8n Project，并分别限制环境变量和执行权限。物理拆库、拆仓和 Temporal 迁移要等 Fact、Policy 与 Workflow 契约稳定后再进行。
+
+工厂能力聚合命令现在只更新证据卡片，不再隐式创建或更新 Policy 候选。`product-questions:import-factory-capability-policies` 和 `product-questions:import-draft-policy-reviews` 仅用于当前存量数据的一次性/人工迁移，不进入 Scheduler；正式 Policy 的唯一发布入口是后台 Draft → Review → Publish 及其不可变版本记录。
+
+生产分析统一使用 `product-questions:classify-batch` / `ProductQuestionBatchAnalyzer`。`product-questions:analyze` 必须显式提供 `--question`，仅保留给后台单条诊断和历史详细回复质量分析，不能再选择或覆盖一批数据。
 
 ## 启动
 
@@ -14,11 +22,14 @@ cp .env.example .env
 openssl rand -hex 32
 ```
 
-把随机值写入 `.env` 的 `N8N_ENCRYPTION_KEY`，并为 `LARAVEL_INTERNAL_API_TOKEN` 配置另一条随机值。Laravel 项目的 `.env` 使用同一个值：
+把随机值写入 `.env` 的 `N8N_ENCRYPTION_KEY`，并为 Work、Analysis 分别生成内部 API Token。Laravel 项目的 `.env` 配置对应值：
 
 ```dotenv
-N8N_INTERNAL_API_TOKEN=<same token>
+N8N_WORK_INTERNAL_API_TOKEN=<same work token>
+N8N_ANALYSIS_INTERNAL_API_TOKEN=<same analysis token>
 ```
+
+n8n 目录的 `.env` 分别使用 `LARAVEL_WORK_INTERNAL_API_TOKEN` 和 `LARAVEL_ANALYSIS_INTERNAL_API_TOKEN`。旧的 `N8N_INTERNAL_API_TOKEN` / `LARAVEL_INTERNAL_API_TOKEN` 仅作为升级期间的兼容回退，新部署不应继续共用。
 
 从仓库根目录启动 Laravel（默认端口 8000）并迁移数据库：
 
@@ -66,6 +77,8 @@ php artisan product-questions:run-n8n-draft-replay \
   --output=storage/app/product-question-replays/1.2.0-predictions.json
 ```
 
+排查失败案例时可重复传入 `--case=pq-003 --case=pq-047` 做定向回放；正式门禁仍必须使用完整 50 条结果。
+
 Runner 通过真实 Webhook 创建隔离的回放问答和 Draft Request，并输出 Execution ID、Draft、事实、Policy、耗时和错误。同时生成 `*-review.json`；人工逐条填写 `fact_error`、`policy_violation`、`accepted_as_is` 和可选备注。回放记录默认保留审计，但会设为离线，不出现在正常问答列表；仅临时测试时使用 `--cleanup`。
 
 人工复核后生成发布报告：
@@ -102,7 +115,7 @@ PRODUCT_QUESTION_SITE_KEY=dressafford
 PRODUCT_QUESTION_EXTERNAL_ID=886
 ```
 
-旧的批量工作流仍可用该变量定向测试。正常人工操作应直接在 Laravel 后台打开该问答并点击 n8n Draft 按钮。
+正常人工操作应直接在 Laravel 后台打开该问答并点击 n8n Draft 按钮。旧的 `work/qa-draft-v1`、租取接口和 PHP Draft Generator 已移除，不再提供双轨生成入口。
 
 ## 停止与升级
 

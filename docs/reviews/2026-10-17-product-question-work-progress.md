@@ -470,8 +470,8 @@ git diff --check passed
 
 已在仓库内 `n8n/` 落地并纳入版本控制的本地 n8n 服务和两个可导入工作流：
 
-- `analysis__qa-analysis-v1`：租取问答并调用现有 `ProductQuestionAnalyzer`；
-- `work__qa-draft-v1`：早期批量工作流，租取未回复问答并调用现有 `ProductQuestionDraftGenerator`；后台当前使用下文的 Agent 工作流。
+- `analysis__qa-analysis-v1`：租取问答并调用统一的 `ProductQuestionBatchAnalyzer`；旧详细 Analyzer 仅允许显式指定单条问题做诊断；
+- `work__qa-draft-v1`：早期批量工作流，曾租取未回复问答并调用 `ProductQuestionDraftGenerator`；该双轨链路已于 2026-10-18 删除，Draft 统一由 Agent 工作流生成。
 
 Laravel 新增独立 Bearer Token 保护的 `/api/internal/n8n/*` 边界，以及 `n8n_workflow_executions` 审计表。每个问题按 `workflow_key + workflow_version + execution_id + question_id` 关联 n8n Execution 并幂等复用完成结果。
 
@@ -526,7 +526,7 @@ php artisan product-questions:gate-draft-release predictions.json --annotations=
 - Laravel 继续作为数据、Policy、事实权限、审核和业务写操作的唯一权威；
 - n8n 负责流程编排、模型试验、Review/Repair 和通知；
 - n8n 不直接连接业务数据库，不保存站点 Admin API Token，不执行 Confirm；
-- 先并行运行新旧 Draft，不替换现有流程；
+- Draft 只保留 `work/qa-draft-agent-v1` 主链路；旧 PHP Generator、租取接口和 `work/qa-draft-v1` 已删除；
 - 成熟后再评估把关键长流程迁移到 Temporal。
 
 同时按工作中心与分析中心的边界开始收敛代码：新功能必须先明确归属，跨中心只通过版本化契约连接；实验能力必须具备评估和退出机制，避免继续增加单体内部耦合。
@@ -534,6 +534,10 @@ php artisan product-questions:gate-draft-release predictions.json --annotations=
 后续 P0/P1 补强：n8n 目录已移入仓库并与 Laravel 同版本提交；真实 Workflow 回放 Runner 通过 Webhook 生成含 Execution ID 的预测和人工复核模板；发布门禁将 Workflow definition checksum、回放集 checksum、完整预测、人工事实/Policy 复核和质量阈值绑定，`active` 注册必须提供通过报告。新增 Draft Workflow 健康报告与人工修改反馈报告。Policy 高频修改改为后台创建 Draft 版本、人工发布或驳回，并保留不可变版本快照；不再要求为每次措辞调整新增数据迁移。
 
 Workflow `1.1.0` 已通过真实 n8n Webhook 完成 50/50 回放，Workflow 层没有失败；人工逐条复核后发布门禁按预期拒绝该版本：无修改采用率 52%，漏意图率 46%，错误放行必须阻止案例 8%，事实错误率 6%，Policy 违规率 44%，p50 49 秒、p95 76 秒。主要缺口是回放集中尚未具备对应 Policy/事实的意图、分类标签与现有 verified Policy 不一致、多意图回复遗漏，以及回复中重复商品标识或承诺不存在的后续人工动作。完整门禁摘要见 `docs/reviews/2026-10-17-n8n-draft-replay-1.1.0-report.json`；原始预测和人工标注保存在本地 `storage/app/product-question-replays/`，未进入 Git。
+
+2026-10-18 收口结果：Workflow `1.2.0` 使用最终定义 checksum `9b026cff1d37fa58b4e27cbc217cddc1b9bdbc37277407c8c4f954f2e4e7fe33` 完成新的 50/50 真实 Webhook 回放。自动门禁指标为 Workflow 失败 0、漏意图 0、错误放行 0、错误阻止 0、商品标识复述 0、虚构后续人工动作 0，p50 53 秒、p95 91 秒；样卡和取消案例已消费 verified Policy。当前唯一未满足项是 50 条事实与 Policy 的人工复核覆盖率仍为 0，因此 `1.2.0` 保持 `evaluating`，没有绕过门禁激活。完整摘要见 `docs/reviews/2026-10-18-n8n-draft-replay-1.2.0-report.json`，原始预测与复核模板保存在本地 `storage/app/product-question-replays/`。
+
+同轮清理已删除旧 Draft Generator/Prompt/命令/API 和工厂能力旧页面；工厂能力聚合只维护证据，不再隐式修改 Policy 候选。两个存量 Policy importer 已明确为手动迁移工具且未加入 Scheduler。Work 与 Analysis 使用独立的内部 API Token 作用域，仍保持同仓、同 Laravel 应用的逻辑隔离，暂不进行物理拆分。完整本地回归为 147 tests / 878 assertions，Pint、Workflow JSON、Compose 配置和 `git diff --check` 均通过。
 
 具体实施方案见：
 

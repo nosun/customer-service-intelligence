@@ -10,7 +10,7 @@ class AggregateProductQuestionFactoryCapabilities extends Command
 {
     protected $signature = 'product-questions:aggregate-factory-capabilities {--site=dorriswedding} {--days=150}';
 
-    protected $description = 'Aggregate classified factory-review questions into reusable capability cards';
+    protected $description = 'Aggregate factory-review evidence without publishing or changing policy candidates';
 
     public function handle(ProductQuestionFactoryCapabilityAggregator $aggregator): int
     {
@@ -23,7 +23,7 @@ class AggregateProductQuestionFactoryCapabilities extends Command
         }
 
         $result = $aggregator->aggregate($site, $days);
-        $this->info("已生成 {$result['capabilities']} 张工厂能力卡，覆盖 {$result['questions']} 条问答。");
+        $this->info("已汇总 {$result['capabilities']} 项工厂能力证据，覆盖 {$result['questions']} 条问答；未修改 Policy 候选。");
 
         return self::SUCCESS;
     }

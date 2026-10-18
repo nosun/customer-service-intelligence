@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\CommerceSite;
 use App\Models\KnowledgeArticle;
 use App\Models\ProductQuestionAnalysis;
+use App\Models\ProductQuestionDraft;
 use App\Models\ProductQuestionPolicyCandidate;
 use App\Models\ProductQuestionPolicyRun;
+use App\Services\ProductQuestions\ProductQuestionDraftPolicyReviewImporter;
 use App\Services\ProductQuestions\ProductQuestionPolicyPrompt;
 use App\Services\ProductQuestions\ProductQuestionPolicySynthesizer;
 use App\Services\TradeManager\ProductQuestionSyncService;
@@ -101,6 +103,7 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
         $article = KnowledgeArticle::where('key', 'qa_dorriswedding_ask_available_colors')->firstOrFail();
         $this->assertSame('verified', $article->status);
         $this->assertSame('dorriswedding', $article->site_key);
+        $this->assertSame('draft_sensitive', $article->automation_tier);
         $this->assertSame('业务确认颜色回复规则。', $candidate->fresh()->review_notes);
         $this->assertSame(2, DB::table('product_question_strategy_evidence')->count());
 
@@ -134,6 +137,74 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
 
         $this->assertSame('candidate', $candidate->fresh()->review_status);
         $this->assertDatabaseMissing('knowledge_articles', ['key' => 'qa_dorriswedding_ask_guarantee']);
+    }
+
+    public function test_reviewer_can_save_answers_without_publishing_candidate(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $site = $this->site();
+        $analysis = $this->analysis($site, 105, 'Can I order a fabric swatch?');
+        $candidate = ProductQuestionPolicyCandidate::create([
+            'product_question_policy_run_id' => $this->policyRun($site)->id,
+            'commerce_site_id' => $site->id,
+            ...$this->strategy([$analysis->product_question_id], 'ask_swatch'),
+            'review_status' => 'candidate',
+        ]);
+
+        $this->post("/admin/product-question-policies/{$candidate->id}/review", [
+            'review_status' => 'candidate',
+            'review_notes' => '1. 支持；2. 从样卡页面下单；3. 需要收费。',
+        ])->assertRedirect();
+
+        $candidate->refresh();
+        $this->assertSame('candidate', $candidate->review_status);
+        $this->assertSame('1. 支持；2. 从样卡页面下单；3. 需要收费。', $candidate->review_notes);
+        $this->assertNull($candidate->knowledge_article_id);
+    }
+
+    public function test_replay_missing_policies_are_imported_as_backend_review_candidates(): void
+    {
+        $site = $this->site();
+        $swatch = $this->replayDraft($site, 301, 'pq-012', 'Can I order a fabric swatch?', ['ask_swatch', 'ask_fabric']);
+        $cancellation = $this->replayDraft($site, 302, 'pq-038', 'Can I cancel after production starts?', ['ask_cancellation_policy']);
+
+        $run = app(ProductQuestionDraftPolicyReviewImporter::class)->import($site, [
+            ['id' => 'pq-012', 'draft_id' => $swatch->id, 'intents' => $swatch->intents],
+            ['id' => 'pq-038', 'draft_id' => $cancellation->id, 'intents' => $cancellation->intents],
+        ], '1.2.0');
+
+        $this->assertSame('completed', $run->status);
+        $this->assertSame(2, $run->candidate_count);
+        $swatchCandidate = $run->candidates()->where('scenario_key', 'ask_swatch')->firstOrFail();
+        $this->assertSame('candidate', $swatchCandidate->review_status);
+        $this->assertSame('global', $swatchCandidate->scope);
+        $this->assertSame([$swatch->product_question_id], $swatchCandidate->evidence_question_ids);
+        $this->assertSame([], $swatchCandidate->open_questions);
+        $this->assertStringContainsString('satin、chiffon 和 matte satin', $swatchCandidate->policy_rules[0]);
+        $this->assertDatabaseHas('product_question_policy_candidates', [
+            'product_question_policy_run_id' => $run->id,
+            'scenario_key' => 'ask_cancellation_policy',
+            'review_status' => 'candidate',
+        ]);
+        $cancellationCandidate = $run->candidates()->where('scenario_key', 'ask_cancellation_policy')->firstOrFail();
+        $this->assertSame('整单取消与退款规则', $cancellationCandidate->title);
+        $this->assertSame([], $cancellationCandidate->open_questions);
+        $this->assertStringContainsString('实际制作开始时间', implode(' ', $cancellationCandidate->policy_rules));
+        $this->assertStringContainsString('/article/cancellation-policy.html', implode(' ', $cancellationCandidate->policy_rules));
+        $this->actingAs($this->administrator(), 'admin')
+            ->get("/admin/product-question-policies/{$swatchCandidate->id}")
+            ->assertOk()
+            ->assertSee('Workflow 回放 pq-012')
+            ->assertSee('Can I order a fabric swatch?')
+            ->assertSee('A verified policy is required.')
+            ->assertSee('US$0.01')
+            ->assertSee('保存审核意见，暂不发布');
+
+        app(ProductQuestionDraftPolicyReviewImporter::class)->import($site, [
+            ['id' => 'pq-012', 'draft_id' => $swatch->id, 'intents' => $swatch->intents],
+            ['id' => 'pq-038', 'draft_id' => $cancellation->id, 'intents' => $cancellation->intents],
+        ], '1.2.0');
+        $this->assertSame(2, $run->candidates()->count());
     }
 
     public function test_confirming_global_candidate_publishes_cross_site_verified_knowledge(): void
@@ -349,6 +420,43 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
             'model' => 'MiniMax-Test',
             'prompt_version' => 'test',
             'started_at' => now(),
+        ]);
+    }
+
+    /** @param list<string> $intents */
+    private function replayDraft(CommerceSite $site, int $externalId, string $caseId, string $questionText, array $intents): ProductQuestionDraft
+    {
+        $question = app(ProductQuestionSyncService::class)->storeQuestion($site, [
+            'id' => $externalId,
+            'sn' => 'DW100',
+            'product' => ['name' => 'Replay Dress'],
+            'question' => $questionText,
+            'answer' => null,
+            'reply_status' => 'unanswered',
+            'type' => 1,
+            'type_text' => 'Replay question',
+            'visible' => false,
+            'images' => [],
+            'created_at' => '2026-10-18 10:00:00',
+        ]);
+        $question->update(['raw_payload' => ['_replay' => ['case_id' => $caseId]]]);
+
+        return ProductQuestionDraft::create([
+            'product_question_id' => $question->id,
+            'status' => 'blocked',
+            'model' => 'MiniMax-Test',
+            'prompt_version' => 'n8n-qa-draft-agent-v4',
+            'intents' => $intents,
+            'knowledge_article_ids' => [],
+            'facts' => [],
+            'fact_sources' => [],
+            'missing_facts' => [],
+            'safety_flags' => ['unverified_policy_reference'],
+            'answer_en' => 'A verified policy is required.',
+            'recommended_visible' => true,
+            'requires_human_review' => true,
+            'input_hash' => hash('sha256', $caseId),
+            'generated_at' => now(),
         ]);
     }
 

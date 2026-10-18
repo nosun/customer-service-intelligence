@@ -15,6 +15,8 @@ class ProductQuestionDraftReleaseGate
             'prediction_coverage' => 1.0,
             'quality_review_coverage' => 1.0,
             'workflow_failure_rate' => 0.0,
+            'product_identity_repetition_rate' => 0.0,
+            'unsupported_follow_up_action_rate' => 0.0,
             'fact_error_rate' => 0.0,
             'policy_violation_rate' => 0.0,
             'missed_required_block_rate' => 0.0,

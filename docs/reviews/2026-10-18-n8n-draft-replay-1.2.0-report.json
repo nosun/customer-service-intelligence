@@ -1,0 +1,33 @@
+{
+  "workflow": "work/qa-draft-agent-v1@1.2.0",
+  "status": "evaluating",
+  "replay": {
+    "suite_size": 50,
+    "prediction_coverage": 1.0,
+    "workflow_failure_rate": 0.0,
+    "missed_intent_rate": 0.0,
+    "missed_required_block_rate": 0.0,
+    "product_identity_repetition_rate": 0.0,
+    "unsupported_follow_up_action_rate": 0.0,
+    "false_block_rate": 0.0,
+    "p50_duration_ms": 53000,
+    "p95_duration_ms": 91000
+  },
+  "release_gate": {
+    "passed": false,
+    "reason": "Human fact and policy annotations are pending.",
+    "quality_review_coverage": 0.0
+  },
+  "policy_review_pending": [],
+  "artifacts": {
+    "predictions": "storage/app/product-question-replays/1.2.0-predictions.json",
+    "human_review": "storage/app/product-question-replays/1.2.0-predictions-review.json",
+    "release_report": "storage/app/product-question-replays/1.2.0-release-report.json"
+  },
+  "notes": [
+    "The final checksum-bound 50-case replay completed without a Workflow failure.",
+    "Swatch and cancellation cases now consume reviewed verified policies and no longer block for missing policy.",
+    "Workflow 1.2.0 remains evaluating and was not activated.",
+    "No Preview or Confirm action was executed."
+  ]
+}

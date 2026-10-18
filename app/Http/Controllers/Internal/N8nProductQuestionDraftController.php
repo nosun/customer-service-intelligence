@@ -48,7 +48,7 @@ class N8nProductQuestionDraftController extends Controller
         N8nProductQuestionDraftService $service,
     ): JsonResponse {
         $input = $httpRequest->validate([
-            'intents' => ['present', 'array', 'max:4'],
+            'intents' => ['present', 'array', 'max:6'],
             'intents.*' => ['string', 'max:100'],
         ]);
 

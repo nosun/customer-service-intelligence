@@ -7,20 +7,16 @@ use App\Models\ProductQuestion;
 use App\Services\ProductQuestions\ProductQuestionAnalyzer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AnalyzeProductQuestions extends Command
 {
     protected $signature = 'product-questions:analyze
         {--site= : Site key; required when more than one enabled site exists}
-        {--limit=30 : Maximum records to analyze}
-        {--seed=qa-pilot-v1 : Stable sample seed}
-        {--reply-status=answered : all, answered, or unanswered}
-        {--question= : Analyze one external question ID}
+        {--question= : External question ID required for a diagnostic single-record run}
         {--force : Reanalyze unchanged candidate results}';
 
-    protected $description = 'Classify historical product questions and assess observed reply patterns';
+    protected $description = 'Diagnose one product question with the legacy detailed analyzer; use classify-batch for production analysis';
 
     public function handle(ProductQuestionAnalyzer $analyzer): int
     {
@@ -32,15 +28,9 @@ class AnalyzeProductQuestions extends Command
 
         try {
             $options = validator([
-                'limit' => (int) $this->option('limit'),
-                'seed' => trim((string) $this->option('seed')),
-                'reply_status' => trim((string) $this->option('reply-status')),
                 'question' => $this->option('question') === null ? null : (int) $this->option('question'),
             ], [
-                'limit' => ['required', 'integer', 'min:1', 'max:5000'],
-                'seed' => ['required', 'string', 'max:150'],
-                'reply_status' => ['required', Rule::in(['all', 'answered', 'unanswered'])],
-                'question' => ['nullable', 'integer', 'min:1'],
+                'question' => ['required', 'integer', 'min:1'],
             ])->validate();
         } catch (ValidationException $exception) {
             foreach ($exception->validator->errors()->all() as $error) {
@@ -54,7 +44,7 @@ class AnalyzeProductQuestions extends Command
         if ($site === null) {
             return self::INVALID;
         }
-        $questions = $this->select($site, $options);
+        $questions = $this->select($site, (int) $options['question']);
         if ($questions->isEmpty()) {
             $this->warn('没有符合条件的问答。');
 
@@ -110,25 +100,14 @@ class AnalyzeProductQuestions extends Command
         return $query->first();
     }
 
-    /** @param array<string, mixed> $options
-     * @return Collection<int, ProductQuestion>
-     */
-    private function select(CommerceSite $site, array $options): Collection
+    /** @return Collection<int, ProductQuestion> */
+    private function select(CommerceSite $site, int $externalId): Collection
     {
-        $query = ProductQuestion::query()
+        return ProductQuestion::query()
             ->where('commerce_site_id', $site->id)
             ->where('remote_present', true)
-            ->with(['site', 'analysis']);
-        if ($options['question'] !== null) {
-            return $query->where('external_id', $options['question'])->get();
-        }
-        if ($options['reply_status'] !== 'all') {
-            $query->where('reply_status', $options['reply_status']);
-        }
-
-        return $query->get()->sortBy(
-            fn (ProductQuestion $question): string => ($question->analysis === null ? '0:' : '1:')
-                .hash('sha256', $options['seed'].':'.$question->id),
-        )->take($options['limit'])->values();
+            ->where('external_id', $externalId)
+            ->with(['site', 'analysis'])
+            ->get();
     }
 }

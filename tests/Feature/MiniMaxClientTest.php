@@ -46,4 +46,20 @@ class MiniMaxClientTest extends TestCase
 
         (new MiniMaxClient('', '', ''))->structuredCompletion('system', 'user');
     }
+
+    public function test_it_retries_once_when_the_model_returns_invalid_json(): void
+    {
+        Http::fake([
+            'https://api.minimax.test/v1/chat/completions' => Http::sequence()
+                ->push(['id' => 'invalid', 'choices' => [['message' => ['content' => '{invalid']]]])
+                ->push(['id' => 'valid', 'choices' => [['message' => ['content' => '{"ok":true}']]]]),
+        ]);
+
+        $result = (new MiniMaxClient('secret', 'https://api.minimax.test/v1', 'MiniMax-M3'))
+            ->structuredCompletion('system', 'user');
+
+        $this->assertTrue($result['output']['ok']);
+        $this->assertSame('valid', $result['request_id']);
+        Http::assertSentCount(2);
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AiWorkflow;
 use App\Models\CommerceProduct;
 use App\Models\CommerceSite;
 use App\Models\KnowledgeArticle;
@@ -10,8 +11,7 @@ use App\Models\ProductQuestionAnalysis;
 use App\Models\ProductQuestionDraft;
 use App\Models\ProductQuestionDraftRequest;
 use App\Services\ProductQuestions\N8nProductQuestionDraftService;
-use App\Services\ProductQuestions\ProductQuestionAnalyzer;
-use App\Services\ProductQuestions\ProductQuestionDraftGenerator;
+use App\Services\ProductQuestions\ProductQuestionBatchAnalyzer;
 use App\Services\TradeManager\ProductQuestionSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery\MockInterface;
@@ -29,7 +29,22 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
 
     public function test_internal_api_requires_its_service_token(): void
     {
-        $this->postJson('/api/internal/n8n/product-question-drafts/lease', [])
+        $this->postJson('/api/internal/n8n/product-question-analysis/lease', [])
+            ->assertUnauthorized();
+    }
+
+    public function test_work_and_analysis_tokens_cannot_cross_their_api_boundaries(): void
+    {
+        config([
+            'services.n8n.work_internal_api_token' => 'work-token',
+            'services.n8n.analysis_internal_api_token' => 'analysis-token',
+        ]);
+
+        $this->withToken('work-token')
+            ->postJson('/api/internal/n8n/product-question-analysis/lease', [])
+            ->assertUnauthorized();
+        $this->withToken('analysis-token')
+            ->postJson('/api/internal/n8n/draft-requests/not-found/start', [])
             ->assertUnauthorized();
     }
 
@@ -65,35 +80,21 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             ->assertJsonPath('data.0.question_id', $first->id);
     }
 
-    public function test_draft_lease_only_returns_unanswered_questions(): void
-    {
-        $site = $this->site();
-        $unanswered = $this->question($site, 201, 'unanswered');
-        $this->question($site, 202, 'answered');
-
-        $this->withToken('test-n8n-token')
-            ->postJson('/api/internal/n8n/product-question-drafts/lease', [
-                'site_key' => $site->site_key,
-                'limit' => 10,
-            ])
-            ->assertOk()
-            ->assertJsonPath('workflow_key', 'work/qa-draft-v1')
-            ->assertJsonPath('count', 1)
-            ->assertJsonPath('data.0.question_id', $unanswered->id);
-    }
-
     public function test_analysis_execution_is_audited_and_idempotent(): void
     {
         $question = $this->question($this->site(), 301, 'answered');
         $analysis = ProductQuestionAnalysis::create($this->analysis($question->id, 'candidate', 'b'));
-        $this->mock(ProductQuestionAnalyzer::class, function (MockInterface $mock) use ($analysis): void {
+        $this->mock(ProductQuestionBatchAnalyzer::class, function (MockInterface $mock) use ($analysis): void {
             $mock->shouldReceive('isConfigured')->once()->andReturnTrue();
-            $mock->shouldReceive('analyze')->once()->andReturn([
-                'status' => 'completed',
-                'analysis_id' => $analysis->id,
-                'run_id' => 9,
-                'error' => null,
+            $mock->shouldReceive('analyzeResilient')->once()->andReturn([
+                'results' => [[
+                    'question_id' => $analysis->product_question_id,
+                    'external_id' => 301,
+                    'status' => 'completed',
+                    'error' => null,
+                ]],
                 'usage' => ['total_tokens' => 10],
+                'request_id' => 'analysis-request-1',
             ]);
         });
         $payload = [
@@ -120,44 +121,6 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'status' => 'completed',
             'result_id' => $analysis->id,
         ]);
-    }
-
-    public function test_draft_execution_persists_a_local_draft_without_site_reply(): void
-    {
-        $question = $this->question($this->site(), 401, 'unanswered');
-        $draft = ProductQuestionDraft::create([
-            'product_question_id' => $question->id,
-            'status' => 'generated',
-            'model' => 'test-model',
-            'prompt_version' => 'test-prompt',
-            'intents' => ['ask_pockets'],
-            'knowledge_article_ids' => [],
-            'facts' => [],
-            'fact_sources' => [],
-            'missing_facts' => [],
-            'safety_flags' => [],
-            'answer_en' => 'This is a local draft.',
-            'recommended_visible' => true,
-            'requires_human_review' => true,
-            'input_hash' => str_repeat('c', 64),
-        ]);
-        $this->mock(ProductQuestionDraftGenerator::class, function (MockInterface $mock) use ($draft): void {
-            $mock->shouldReceive('isConfigured')->once()->andReturnTrue();
-            $mock->shouldReceive('generate')->once()->andReturn($draft);
-        });
-
-        $this->withToken('test-n8n-token')
-            ->postJson("/api/internal/n8n/product-questions/{$question->id}/draft", [
-                'workflow_key' => 'work/qa-draft-v1',
-                'workflow_version' => N8nProductQuestionDraftService::WORKFLOW_VERSION,
-                'execution_id' => 'execution-draft-1',
-            ])
-            ->assertOk()
-            ->assertJsonPath('result.status', 'generated')
-            ->assertJsonPath('result.draft_id', $draft->id);
-
-        $this->assertSame('unanswered', $question->fresh()->reply_status);
-        $this->assertNull($question->fresh()->answer);
     }
 
     public function test_n8n_agent_contract_runs_context_facts_policies_review_and_save(): void
@@ -330,6 +293,8 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
         ];
         $resolved = app(N8nProductQuestionDraftService::class)
             ->resolveFacts($request, $plan);
+        $this->assertSame('dressafford', data_get($resolved, 'facts.site.site_key'));
+        $this->assertSame(1, data_get($resolved, 'facts.product.customizable'));
 
         $result = app(N8nProductQuestionDraftService::class)->complete($request, [
             'plan' => $plan,
@@ -416,7 +381,136 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'The answer adds a generic contact referral that is not required by the selected policy.',
             $draft->safety_flags,
         );
-        $this->assertContains('The answer unnecessarily repeats the product title or identifier.', $draft->safety_flags);
+        $this->assertStringNotContainsString('Blue Dress', $draft->answer_en);
+    }
+
+    public function test_final_validation_allows_configured_support_email_when_verified_policy_requires_it(): void
+    {
+        $site = $this->site();
+        $site->update(['customer_service_email' => 'support@dressafford.test']);
+        $question = $this->question($site, 508, 'unanswered');
+        $question->update(['question' => 'Can I cancel after production starts?']);
+        $policy = KnowledgeArticle::create([
+            'key' => 'qa_dressafford_ask_cancellation_policy',
+            'title' => 'Cancellation policy',
+            'knowledge_type' => 'policy',
+            'status' => 'verified',
+            'site_key' => 'dressafford',
+            'automation_tier' => 'draft_sensitive',
+            'applicability' => 'Whole-order cancellation questions',
+            'required_facts' => [],
+            'policy_rules' => ['Submit the request through {{ site.customer_service_email }}.'],
+            'decision_tree' => [],
+            'reply_strategy' => [],
+            'reply_templates' => [],
+            'action_steps' => [],
+            'prohibited_claims' => [],
+            'escalation_rules' => [],
+            'version' => 1,
+        ]);
+        $this->candidateWorkflow();
+        $request = ProductQuestionDraftRequest::create([
+            'request_id' => '019a-policy-contact-request',
+            'product_question_id' => $question->id,
+            'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+            'workflow_version' => '1.2.0',
+            'status' => 'running',
+            'n8n_execution_id' => 'policy-contact-1',
+            'started_at' => now(),
+        ]);
+
+        $result = app(N8nProductQuestionDraftService::class)->complete($request, [
+            'plan' => ['intents' => ['ask_cancellation_policy'], 'customer_language' => 'en'],
+            'facts' => ['site' => ['customer_service_email' => 'support@dressafford.test']],
+            'fact_sources' => [],
+            'missing_facts' => [],
+            'safety_flags' => [],
+            'recommended_visible' => true,
+            'policies' => [['id' => $policy->id, 'intent' => 'ask_cancellation_policy', 'policy_rules' => $policy->policy_rules]],
+            'review' => [
+                'approved' => true,
+                'must_block' => false,
+                'covered_intents' => ['ask_cancellation_policy'],
+                'final_answer_en' => 'Please email support@dressafford.test with your order number and cancellation reason.',
+                'confidence' => 0.9,
+                'safety_flags' => [],
+            ],
+        ]);
+
+        $draft = ProductQuestionDraft::findOrFail($result['draft_id']);
+        $this->assertSame('generated', $draft->status);
+        $this->assertSame('Please email support@dressafford.test with your order number and cancellation reason.', $draft->answer_en);
+    }
+
+    public function test_verified_policy_generates_a_stable_answer_for_post_production_cancellation_question(): void
+    {
+        $site = $this->site();
+        $site->update([
+            'public_base_url' => 'https://www.dressafford.test',
+            'customer_service_email' => 'support@dressafford.test',
+        ]);
+        $question = $this->question($site, 509, 'unanswered');
+        $question->update(['question' => 'Can I cancel after production starts?']);
+        $policy = KnowledgeArticle::create([
+            'key' => 'qa_dressafford_ask_cancellation_policy',
+            'title' => 'Cancellation policy',
+            'knowledge_type' => 'policy',
+            'status' => 'verified',
+            'site_key' => 'dressafford',
+            'automation_tier' => 'draft_sensitive',
+            'applicability' => 'Whole-order cancellation questions',
+            'required_facts' => [],
+            'policy_rules' => [
+                'Use the factory-confirmed actual production start time.',
+                'Submit the request through {{ site.customer_service_email }}.',
+            ],
+            'decision_tree' => [],
+            'reply_strategy' => [],
+            'reply_templates' => [],
+            'action_steps' => [],
+            'prohibited_claims' => [],
+            'escalation_rules' => [],
+            'version' => 1,
+        ]);
+        $this->candidateWorkflow();
+        $request = ProductQuestionDraftRequest::create([
+            'request_id' => '019a-policy-cancellation-request',
+            'product_question_id' => $question->id,
+            'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+            'workflow_version' => '1.2.0',
+            'status' => 'running',
+            'n8n_execution_id' => 'policy-cancellation-1',
+            'started_at' => now(),
+        ]);
+
+        $result = app(N8nProductQuestionDraftService::class)->complete($request, [
+            'plan' => ['intents' => ['ask_cancellation_policy'], 'customer_language' => 'en'],
+            'facts' => ['site' => [
+                'public_base_url' => 'https://www.dressafford.test',
+                'customer_service_email' => 'support@dressafford.test',
+            ]],
+            'fact_sources' => [],
+            'missing_facts' => [],
+            'safety_flags' => [],
+            'recommended_visible' => true,
+            'policies' => [['id' => $policy->id, 'intent' => 'ask_cancellation_policy', 'policy_rules' => $policy->policy_rules]],
+            'review' => [
+                'approved' => false,
+                'must_block' => true,
+                'covered_intents' => ['ask_cancellation_policy'],
+                'final_answer_en' => 'A reviewer-generated answer that should not be retained.',
+                'confidence' => 0.9,
+                'safety_flags' => ['no_meaningful_localization_applied'],
+            ],
+        ]);
+
+        $draft = ProductQuestionDraft::findOrFail($result['draft_id']);
+        $this->assertSame('generated', $draft->status);
+        $this->assertStringContainsString('actual production start time confirmed with the factory', $draft->answer_en);
+        $this->assertStringContainsString('https://www.dressafford.test/article/cancellation-policy.html', $draft->answer_en);
+        $this->assertStringContainsString('support@dressafford.test', $draft->answer_en);
+        $this->assertStringContainsString('bank timing depends on your card issuer', $draft->answer_en);
+        $this->assertNotContains('no_meaningful_localization_applied', $draft->safety_flags);
     }
 
     public function test_unmatched_request_is_returned_as_a_blocking_draft_instead_of_a_workflow_error(): void
@@ -785,6 +879,141 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
         $this->assertSame(5000, mb_strlen($request->error_message));
     }
 
+    public function test_v1_2_sanitizes_product_identity_and_blocks_unsupported_follow_up_actions(): void
+    {
+        $site = $this->site();
+        $question = $this->question($site, 901, 'unanswered');
+        $question->update(['question' => 'Is this item in stock now?']);
+        $this->candidateWorkflow();
+        $request = ProductQuestionDraftRequest::create([
+            'request_id' => '019a-v12-action-guard',
+            'product_question_id' => $question->id,
+            'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+            'workflow_version' => '1.2.0',
+            'status' => 'running',
+            'n8n_execution_id' => 'v12-action-guard',
+            'started_at' => now(),
+        ]);
+
+        $result = app(N8nProductQuestionDraftService::class)->complete($request, [
+            'plan' => ['intents' => ['ask_in_stock'], 'customer_language' => 'en'],
+            'facts' => ['product' => [
+                'name' => 'Replay Dress',
+                'stock_specs' => [['size' => '8', 'status' => 'in_stock']],
+            ]],
+            'fact_sources' => [],
+            'missing_facts' => [],
+            'safety_flags' => [],
+            'recommended_visible' => true,
+            'policies' => [],
+            'review' => [
+                'approved' => true,
+                'must_block' => false,
+                'covered_intents' => ['ask_in_stock'],
+                'final_answer_en' => 'Replay Dress (QA-901) is in stock. Our team will follow up with you.',
+                'confidence' => 0.9,
+                'safety_flags' => [],
+            ],
+        ]);
+
+        $draft = ProductQuestionDraft::findOrFail($result['draft_id']);
+        $this->assertSame('generated', $draft->status);
+        $this->assertStringNotContainsString('Replay Dress', $draft->answer_en);
+        $this->assertStringNotContainsString('QA-901', $draft->answer_en);
+        $this->assertStringNotContainsString('follow up', $draft->answer_en);
+    }
+
+    public function test_v1_2_blocks_a_draft_when_any_planned_intent_is_uncovered(): void
+    {
+        $site = $this->site();
+        $question = $this->question($site, 902, 'unanswered');
+        $question->update(['question' => 'Does it have pockets and can it arrive in France before June 1?']);
+        $this->candidateWorkflow();
+        $request = ProductQuestionDraftRequest::create([
+            'request_id' => '019a-v12-coverage-guard',
+            'product_question_id' => $question->id,
+            'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+            'workflow_version' => '1.2.0',
+            'status' => 'running',
+            'n8n_execution_id' => 'v12-coverage-guard',
+            'started_at' => now(),
+        ]);
+
+        $result = app(N8nProductQuestionDraftService::class)->complete($request, [
+            'plan' => [
+                'intents' => ['ask_pockets', 'request_add_pockets', 'ask_delivery_time'],
+                'customer_language' => 'en',
+                'country_code' => 'FR',
+            ],
+            'facts' => ['product' => ['type' => 'dress'], 'eta' => ['estimated_arrival_max' => '2026-05-20']],
+            'fact_sources' => [],
+            'missing_facts' => [],
+            'safety_flags' => [],
+            'recommended_visible' => true,
+            'policies' => [],
+            'review' => [
+                'approved' => true,
+                'must_block' => false,
+                'covered_intents' => ['ask_pockets', 'request_add_pockets'],
+                'final_answer_en' => 'This dress does not include pockets, but they can be added.',
+                'confidence' => 0.9,
+                'safety_flags' => [],
+            ],
+        ]);
+
+        $draft = ProductQuestionDraft::findOrFail($result['draft_id']);
+        $this->assertSame('blocked', $draft->status);
+        $this->assertContains('The final answer does not cover every planned intent.', $draft->safety_flags);
+    }
+
+    public function test_replay_fixture_overrides_product_and_live_facts_without_external_calls(): void
+    {
+        $site = $this->site();
+        $question = $this->question($site, 903, 'unanswered');
+        $question->update([
+            'name' => '__CSI_N8N_REPLAY__',
+            'email' => 'fixture-run@replay.invalid',
+            'question' => 'Can pockets be added and will it arrive in France before June 1?',
+            'raw_payload' => ['_replay' => ['fixture' => [
+                'product' => ['attributes' => ['field_silhouette' => ['Mermaid/Trumpet']]],
+                'facts' => ['eta' => ['estimated_arrival_max' => '2026-05-20']],
+            ]]],
+        ]);
+        CommerceProduct::create([
+            'commerce_site_id' => $site->id,
+            'sn' => 'QA-903',
+            'name' => 'Base Dress',
+            'product' => ['sn' => 'QA-903', 'name' => 'Base Dress', 'type' => 'dress'],
+            'product_detail' => ['attributes' => ['field_silhouette' => ['A-Line']]],
+            'images' => [],
+            'options' => [],
+            'payload_hash' => str_repeat('7', 64),
+            'sync_status' => 'completed',
+            'synced_at' => now(),
+        ]);
+        $this->candidateWorkflow();
+        $request = ProductQuestionDraftRequest::create([
+            'request_id' => '019a-v12-replay-fixture',
+            'product_question_id' => $question->id,
+            'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+            'workflow_version' => '1.2.0',
+            'status' => 'running',
+            'n8n_execution_id' => 'v12-replay-fixture',
+            'started_at' => now(),
+        ]);
+
+        $resolved = app(N8nProductQuestionDraftService::class)->resolveFacts($request, [
+            'intents' => ['request_add_pockets', 'ask_delivery_time'],
+            'customer_language' => 'en',
+            'country_code' => 'FR',
+        ]);
+
+        $this->assertSame(['Mermaid/Trumpet'], data_get($resolved, 'facts.product.attributes.field_silhouette'));
+        $this->assertSame('2026-05-20', data_get($resolved, 'facts.eta.estimated_arrival_max'));
+        $this->assertSame('2027-06-01', data_get($resolved, 'plan.event_date'));
+        $this->assertContains('product-question-draft-replay-suite', array_column($resolved['sources'], 'source'));
+    }
+
     private function site(): CommerceSite
     {
         return CommerceSite::create([
@@ -794,6 +1023,19 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'api_token' => 'secret',
             'enabled' => true,
         ]);
+    }
+
+    private function candidateWorkflow(): AiWorkflow
+    {
+        return AiWorkflow::query()->firstOrCreate(
+            ['workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY, 'workflow_version' => '1.2.0'],
+            [
+                'status' => 'evaluating',
+                'prompt_version' => 'n8n-qa-draft-agent-v4',
+                'allowed_fact_keys' => [],
+                'allowed_actions' => [],
+            ],
+        );
     }
 
     private function question(CommerceSite $site, int $externalId, string $replyStatus)

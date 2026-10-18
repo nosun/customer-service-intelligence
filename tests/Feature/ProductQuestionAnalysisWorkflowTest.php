@@ -146,7 +146,7 @@ class ProductQuestionAnalysisWorkflowTest extends TestCase
         Http::assertSentCount(1);
     }
 
-    public function test_command_selects_only_requested_site_and_reply_status(): void
+    public function test_diagnostic_command_requires_and_selects_one_external_question(): void
     {
         $site = $this->site();
         $this->question();
@@ -155,13 +155,13 @@ class ProductQuestionAnalysisWorkflowTest extends TestCase
 
         $exit = Artisan::call('product-questions:analyze', [
             '--site' => $site->site_key,
-            '--limit' => 5,
-            '--reply-status' => 'answered',
+            '--question' => 120,
         ]);
 
         $this->assertSame(0, $exit, Artisan::output());
         $this->assertSame(1, ProductQuestionAnalysis::count());
         $this->assertSame(1, ProductQuestionAnalysisRun::where('status', 'completed')->count());
+        $this->assertSame(2, Artisan::call('product-questions:analyze', ['--site' => $site->site_key]));
     }
 
     public function test_batch_analyzer_classifies_multiple_questions_in_one_minimax_request(): void
