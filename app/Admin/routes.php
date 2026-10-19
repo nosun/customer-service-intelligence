@@ -68,4 +68,6 @@ Route::group([
     $router->post('knowledge-articles/{knowledgeArticle}/versions', [KnowledgeArticleController::class, 'storeDraft'])->name('knowledge-articles.versions.store');
     $router->post('knowledge-articles/{knowledgeArticle}/versions/{version}/publish', [KnowledgeArticleController::class, 'publish'])->name('knowledge-articles.versions.publish');
     $router->post('knowledge-articles/{knowledgeArticle}/versions/{version}/reject', [KnowledgeArticleController::class, 'reject'])->name('knowledge-articles.versions.reject');
+    $router->post('knowledge-articles/{knowledgeArticle}/bindings', [KnowledgeArticleController::class, 'storeBinding'])->name('knowledge-articles.bindings.store');
+    $router->post('knowledge-articles/{knowledgeArticle}/bindings/{binding}/toggle', [KnowledgeArticleController::class, 'toggleBinding'])->name('knowledge-articles.bindings.toggle');
 });

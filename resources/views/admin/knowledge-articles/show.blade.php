@@ -27,5 +27,20 @@
                 <form method="post" action="{{ admin_url('knowledge-articles/'.$knowledgeArticle->id.'/versions/'.$version->id.'/reject') }}">@csrf<button class="btn btn-xs btn-danger">驳回</button></form>
             </div>@endif
         </div>@endforeach
+    </div></div>
+    <div class="box box-solid"><div class="box-header with-border"><h3 class="box-title">消费绑定</h3></div><div class="box-body">
+        <p class="text-muted">业务知识只保存一份；绑定决定客服或商品问答能否在对应 Intent 下读取。</p>
+        @foreach($knowledgeArticle->bindings as $binding)<div style="border-bottom:1px solid #eee;padding:8px 0">
+            <strong>{{ \App\Models\KnowledgeArticleBinding::CONSUMERS[$binding->consumer] ?? $binding->consumer }}</strong><br>
+            <code>{{ $binding->intent_key }}</code> · {{ \App\Models\KnowledgeArticleBinding::USAGES[$binding->usage] ?? $binding->usage }} · priority {{ $binding->priority }}
+            <form method="post" action="{{ admin_url('knowledge-articles/'.$knowledgeArticle->id.'/bindings/'.$binding->id.'/toggle') }}" style="display:inline;margin-left:6px">@csrf<button class="btn btn-xs btn-{{ $binding->enabled ? 'warning' : 'success' }}">{{ $binding->enabled ? '停用' : '启用' }}</button></form>
+        </div>@endforeach
+        <form method="post" action="{{ admin_url('knowledge-articles/'.$knowledgeArticle->id.'/bindings') }}" style="margin-top:12px">@csrf
+            <div class="form-group"><label>消费渠道</label><select class="form-control" name="consumer">@foreach(\App\Models\KnowledgeArticleBinding::CONSUMERS as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select></div>
+            <div class="form-group"><label>Intent Key</label><input class="form-control" name="intent_key" value="*" required><p class="help-block">使用 * 表示该渠道的通用知识。</p></div>
+            <div class="form-group"><label>用途</label><select class="form-control" name="usage">@foreach(\App\Models\KnowledgeArticleBinding::USAGES as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select></div>
+            <div class="form-group"><label>优先级</label><input class="form-control" type="number" min="0" max="1000" name="priority" value="100" required></div>
+            <button class="btn btn-default">保存绑定</button>
+        </form>
     </div></div></div>
 </div>
