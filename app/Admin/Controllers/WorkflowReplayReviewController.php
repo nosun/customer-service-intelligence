@@ -4,7 +4,7 @@ namespace App\Admin\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiWorkflowReplayRun;
-use App\Services\ProductQuestions\ProductQuestionReplayReviewService;
+use App\Services\N8n\WorkflowReplayReviewServiceRegistry;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Layout\Content;
 use Illuminate\Http\RedirectResponse;
@@ -48,7 +48,7 @@ class WorkflowReplayReviewController extends Controller
             ]));
     }
 
-    public function review(Request $request, int $runId, int $caseId, ProductQuestionReplayReviewService $reviews): RedirectResponse
+    public function review(Request $request, int $runId, int $caseId, WorkflowReplayReviewServiceRegistry $reviews): RedirectResponse
     {
         $run = AiWorkflowReplayRun::findOrFail($runId);
         $case = $run->cases()->findOrFail($caseId);
@@ -64,21 +64,22 @@ class WorkflowReplayReviewController extends Controller
             'reviewed_by' => Admin::user()->id,
             'reviewed_at' => now(),
         ]);
-        $reviews->invalidateGate($run);
-        $reviews->refreshProgress($run);
+        $service = $reviews->forRun($run);
+        $service->invalidateGate($run);
+        $service->refreshProgress($run);
         admin_toastr("{$case->case_key} 的人工复核已保存。", 'success');
 
         return back();
     }
 
-    public function gate(int $id, ProductQuestionReplayReviewService $reviews): RedirectResponse
+    public function gate(int $id, WorkflowReplayReviewServiceRegistry $reviews): RedirectResponse
     {
         $run = AiWorkflowReplayRun::findOrFail($id);
         if ($run->reviewed_count !== $run->case_count) {
             return back()->withErrors(['gate' => '必须完成全部案例的事实与 Policy 人工复核。']);
         }
         try {
-            $report = $reviews->gate($run);
+            $report = $reviews->forRun($run)->gate($run);
         } catch (Throwable $exception) {
             return back()->withErrors(['gate' => $exception->getMessage()]);
         }

@@ -25,6 +25,8 @@ Route::group([
     $router->get('conversations', [ConversationController::class, 'index'])->name('conversations.index');
     $router->get('conversations/{id}', [ConversationController::class, 'show'])->name('conversations.show');
     $router->post('conversations/{id}/draft', [ConversationController::class, 'storeDraft'])->name('conversations.draft');
+    $router->post('conversations/{id}/generate-draft', [ConversationController::class, 'generateDraft'])->name('conversations.generate-draft');
+    $router->post('conversations/{id}/drafts/{draft}/review', [ConversationController::class, 'reviewDraft'])->name('conversations.drafts.review');
     $router->post('conversations/{id}/verify-cancellation', [ConversationController::class, 'verifyCancellation'])->name('conversations.verify-cancellation');
     $router->post('conversations/{id}/cases/{case}/review', [ConversationController::class, 'reviewCase'])->name('conversations.cases.review');
     $router->post('conversations/{id}/nodes/{node}/review', [ConversationController::class, 'reviewNode'])->name('conversations.nodes.review');

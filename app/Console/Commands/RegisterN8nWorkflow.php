@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\AiWorkflow;
-use App\Services\ProductQuestions\ProductQuestionDraftReleaseGate;
+use App\Services\N8n\WorkflowReleaseGateRegistry;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -21,7 +21,7 @@ class RegisterN8nWorkflow extends Command
 
     protected $description = 'Register an exported n8n workflow definition and checksum in Laravel';
 
-    public function handle(ProductQuestionDraftReleaseGate $gate): int
+    public function handle(WorkflowReleaseGateRegistry $gates): int
     {
         $path = realpath((string) $this->argument('file'));
         if ($path === false || ! is_file($path)) {
@@ -45,13 +45,14 @@ class RegisterN8nWorkflow extends Command
             if ($reportPath === '') {
                 throw new RuntimeException('--release-report is required when activating a workflow.');
             }
-            $report = $gate->readReport($reportPath);
-            $gate->assertAllowsActivation(
+            $release = $gates->resolve($key);
+            $report = $release['gate']->readReport($reportPath);
+            $release['gate']->assertAllowsActivation(
                 $report,
                 $key,
                 $version,
                 $definitionChecksum,
-                hash_file('sha256', resource_path('data/product-question-draft-replay-v1.json')),
+                hash_file('sha256', $release['suite_path']),
             );
         }
         $workflow = DB::transaction(function () use ($definitionChecksum, $key, $report, $status, $version): AiWorkflow {

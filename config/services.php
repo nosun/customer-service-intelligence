@@ -40,6 +40,7 @@ return [
         'analysis_internal_api_token' => env('N8N_ANALYSIS_INTERNAL_API_TOKEN'),
         'base_url' => env('N8N_BASE_URL', 'http://127.0.0.1:5678'),
         'draft_webhook_path' => env('N8N_DRAFT_WEBHOOK_PATH', '/webhook/product-question-draft-v1'),
+        'ticket_draft_webhook_path' => env('N8N_TICKET_DRAFT_WEBHOOK_PATH', '/webhook/ticket-draft-v1'),
         'webhook_token' => env('N8N_WEBHOOK_TOKEN'),
         'trigger_timeout' => (int) env('N8N_TRIGGER_TIMEOUT', 10),
     ],

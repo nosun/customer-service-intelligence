@@ -26,6 +26,12 @@ class Conversation extends Model
         return $this->hasMany(ConversationDraft::class);
     }
 
+    public function runtimeCaseSource(): HasOne
+    {
+        return $this->hasOne(CustomerCaseSource::class, 'source_id')
+            ->where('source_type', 'conversation');
+    }
+
     public function businessContextSnapshots(): HasMany
     {
         return $this->hasMany(BusinessContextSnapshot::class);

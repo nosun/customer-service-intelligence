@@ -6,10 +6,12 @@ use App\Models\ChannelAccount;
 use App\Models\Conversation;
 use App\Models\ConversationAnalysis;
 use App\Models\ConversationAttachment;
+use App\Models\ConversationDraft;
 use App\Models\ConversationEvent;
 use App\Models\DecisionCase;
 use App\Models\DecisionNode;
 use App\Models\DecisionNodeEvidence;
+use App\Services\TicketWork\N8nTicketDraftService;
 use Encore\Admin\Auth\Database\Administrator;
 use Encore\Admin\Auth\Database\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -130,6 +132,97 @@ class AdminConversationTest extends TestCase
             'created_by' => $administrator->id,
         ]);
         Http::assertNothingSent();
+    }
+
+    public function test_administrator_can_queue_ticket_draft_in_shadow_mode(): void
+    {
+        config([
+            'services.n8n.base_url' => 'https://n8n.test',
+            'services.n8n.webhook_token' => 'webhook-token',
+            'services.n8n.ticket_draft_webhook_path' => '/webhook/ticket-draft-v1',
+        ]);
+        Http::fake(['https://n8n.test/webhook/ticket-draft-v1' => Http::response(['accepted' => true], 200)]);
+        $administrator = $this->administrator();
+        $ticket = $this->ticket($this->account());
+        ConversationEvent::create([
+            'conversation_id' => $ticket->id,
+            'external_id' => 'event-ticket-draft',
+            'event_type' => 'message',
+            'occurred_at' => now(),
+            'author_type' => 'client',
+            'body_text' => 'Where is order dad20261018-10001?',
+            'content_hash' => hash('sha256', 'event-ticket-draft'),
+            'raw_payload' => [],
+        ]);
+
+        $this->actingAs($administrator, 'admin')
+            ->post("/admin/conversations/{$ticket->id}/generate-draft")
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('customer_cases', [
+            'case_key' => "helpdesk:{$ticket->channel_account_id}:{$ticket->external_id}",
+            'case_type' => 'ticket',
+        ]);
+        $this->assertDatabaseHas('customer_case_sources', [
+            'source_type' => 'conversation',
+            'source_id' => (string) $ticket->id,
+        ]);
+        $this->assertDatabaseHas('work_items', [
+            'work_type' => 'ticket_draft',
+            'status' => 'queued',
+            'workflow_key' => N8nTicketDraftService::WORKFLOW_KEY,
+            'workflow_version' => N8nTicketDraftService::WORKFLOW_VERSION,
+        ]);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://n8n.test/webhook/ticket-draft-v1'
+            && $request->hasHeader('X-Workflow-Token', 'webhook-token'));
+
+        $this->get("/admin/conversations/{$ticket->id}")
+            ->assertOk()
+            ->assertSee('shadow 模式')
+            ->assertSee('work/ticket-draft-v1');
+    }
+
+    public function test_administrator_can_review_generated_draft_but_cannot_accept_a_blocked_one(): void
+    {
+        $administrator = $this->administrator();
+        $ticket = $this->ticket($this->account());
+        $draft = ConversationDraft::create([
+            'conversation_id' => $ticket->id,
+            'body' => 'Initial AI answer.',
+            'source' => 'n8n',
+            'status' => 'draft',
+            'created_by' => $administrator->id,
+            'updated_by' => $administrator->id,
+        ]);
+        $blocked = ConversationDraft::create([
+            'conversation_id' => $ticket->id,
+            'body' => 'Unsafe answer.',
+            'source' => 'n8n',
+            'status' => 'blocked',
+            'created_by' => $administrator->id,
+            'updated_by' => $administrator->id,
+        ]);
+
+        $this->actingAs($administrator, 'admin')
+            ->post("/admin/conversations/{$ticket->id}/drafts/{$draft->id}/review", [
+                'review_outcome' => 'edited',
+                'body' => 'Human-edited answer.',
+                'review_notes' => 'Adjusted tone.',
+            ])->assertRedirect();
+        $this->assertDatabaseHas('conversation_drafts', [
+            'id' => $draft->id,
+            'body' => 'Human-edited answer.',
+            'review_outcome' => 'edited',
+            'reviewed_by' => $administrator->id,
+        ]);
+
+        $this->from("/admin/conversations/{$ticket->id}")
+            ->post("/admin/conversations/{$ticket->id}/drafts/{$blocked->id}/review", [
+                'review_outcome' => 'accepted_as_is',
+                'body' => 'Unsafe answer.',
+            ])->assertRedirect("/admin/conversations/{$ticket->id}")
+            ->assertSessionHasErrors('review_outcome');
+        $this->assertNull($blocked->fresh()->review_outcome);
     }
 
     public function test_administrator_can_review_case_and_node_independently(): void

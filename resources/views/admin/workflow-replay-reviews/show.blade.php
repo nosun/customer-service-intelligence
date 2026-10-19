@@ -6,6 +6,7 @@
         'fact_error_rate' => '事实错误率', 'policy_violation_rate' => 'Policy 违规率',
         'product_identity_repetition_rate' => '商品标识复述率',
         'unsupported_follow_up_action_rate' => '虚构后续动作率',
+        'privacy_leak_rate' => '隐私标识泄露率',
     ];
 @endphp
 
@@ -33,7 +34,7 @@
                     @if(data_get($prediction, 'safety_flags'))<p class="text-warning"><strong>安全提示：</strong>{{ implode('；', data_get($prediction, 'safety_flags')) }}</p>@endif
                     <details><summary>查看事实和 Policy</summary>
                         <h5>事实</h5><pre style="max-height:360px;overflow:auto">{{ json_encode(data_get($prediction, 'facts', []), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</pre>
-                        <h5>Policy IDs</h5><p>{{ implode('、', data_get($prediction, 'knowledge_article_ids', [])) ?: '无' }}</p>
+                        <h5>Policy</h5><pre style="max-height:240px;overflow:auto">{{ json_encode(data_get($prediction, 'knowledge_articles', data_get($prediction, 'knowledge_article_ids', [])), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</pre>
                     </details>
                 </div>
                 <form method="post" action="{{ admin_url('workflow-replay-reviews/'.$run->id.'/cases/'.$case->id) }}"><div class="box-footer">
@@ -64,4 +65,13 @@
             @endif
         </div><div class="box-footer"><form method="post" action="{{ admin_url('workflow-replay-reviews/'.$run->id.'/gate') }}">@csrf<button class="btn btn-success" @disabled($run->reviewed_count !== $run->case_count)>运行发布门禁</button></form></div></div>
     </div>
+</div>
+<div class="callout callout-info">
+    <h4>人工发布门禁</h4>
+    <p>事实错误与 Policy 违规必须由人工逐条判断，AI Reviewer 不计入人工审核覆盖率。</p>
+    @if($run->workflow->domain === 'tickets')
+        <p><code>php artisan tickets:import-draft-replay-review &lt;predictions.json&gt; --workflow-version={{ $run->workflow->workflow_version }}</code></p>
+    @else
+        <p><code>php artisan product-questions:import-draft-replay-review &lt;predictions.json&gt; --workflow-version={{ $run->workflow->workflow_version }}</code></p>
+    @endif
 </div>

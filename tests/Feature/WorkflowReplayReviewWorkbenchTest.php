@@ -6,6 +6,8 @@ use App\Models\AiWorkflow;
 use App\Models\AiWorkflowReplayRun;
 use App\Services\ProductQuestions\ProductQuestionDraftReplaySuite;
 use App\Services\ProductQuestions\ProductQuestionReplayReviewService;
+use App\Services\TicketWork\TicketDraftReplaySuite;
+use App\Services\TicketWork\TicketReplayReviewService;
 use Encore\Admin\Auth\Database\Administrator;
 use Encore\Admin\Auth\Database\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -108,6 +110,52 @@ class WorkflowReplayReviewWorkbenchTest extends TestCase
             'title' => 'Workflow 回放审核',
             'uri' => 'workflow-replay-reviews',
         ]);
+    }
+
+    public function test_ticket_replay_uses_ticket_suite_gate_and_backend_review_service(): void
+    {
+        $workflow = AiWorkflow::query()->where('workflow_key', 'work/ticket-draft-v1')->firstOrFail();
+        $workflow->update(['definition_checksum' => str_repeat('b', 64)]);
+        $suite = app(TicketDraftReplaySuite::class)->cases();
+        $predictions = collect($suite)->map(fn (array $case): array => [
+            'id' => $case['id'],
+            'status' => ($case['simulate_stale'] ?? false) ? 'stale' : ($case['must_block'] ? 'blocked' : 'draft'),
+            'intents' => $case['expected_intents'],
+            'answer_en' => 'A concise factual status answer.',
+            'facts' => [],
+            'missing_facts' => [],
+            'safety_flags' => [],
+            'duration_ms' => 100,
+        ])->all();
+        $directory = storage_path('framework/testing/ticket-replay-review-workbench');
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+        $path = $directory.'/predictions.json';
+        file_put_contents($path, json_encode($predictions, JSON_THROW_ON_ERROR));
+
+        $run = app(TicketReplayReviewService::class)->import(
+            $workflow->workflow_key,
+            $workflow->workflow_version,
+            $path,
+        );
+        $run->cases()->update([
+            'fact_errors' => 0,
+            'policy_violations' => 0,
+            'accepted_as_is' => true,
+            'reviewed_at' => now(),
+        ]);
+        app(TicketReplayReviewService::class)->refreshProgress($run);
+        $report = app(TicketReplayReviewService::class)->gate($run->fresh(), $directory.'/report.json');
+
+        $this->assertTrue($report['passed']);
+        $this->assertSame(1.0, $report['metrics']['prediction_coverage']);
+        $this->assertSame(0.0, $report['metrics']['privacy_leak_rate']);
+        $this->assertSame('passed', $run->fresh()->status);
+        $this->actingAs($this->administrator(), 'admin')
+            ->get("/admin/workflow-replay-reviews/{$run->id}")
+            ->assertOk()
+            ->assertSee('tickets:import-draft-replay-review');
     }
 
     private function administrator(): Administrator

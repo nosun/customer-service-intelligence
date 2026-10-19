@@ -1,6 +1,8 @@
 @php
     $case = $ticket->decisionCase;
     $draft = $ticket->drafts->first();
+    $ticketWorkItems = $ticket->runtimeCaseSource?->customerCase?->workItems ?? collect();
+    $latestTicketWorkItem = $ticketWorkItems->first();
     $reviewLabels = ['candidate' => '待审核', 'confirmed' => '已确认', 'corrected' => '已修正', 'rejected' => '已拒绝'];
     $assignment = $ticket->assignment_snapshot ?: [];
     $cancellationContext = $ticket->latestCancellationContext;
@@ -39,6 +41,10 @@
     .attachment-meta { color: #888; font-size: 12px; }
     @media (max-width: 980px) { .ticket-detail { grid-template-columns: 1fr; } }
 </style>
+
+@if($latestTicketWorkItem && in_array($latestTicketWorkItem->status, ['queued', 'running'], true))
+    <meta http-equiv="refresh" content="5">
+@endif
 
 <a class="ticket-back" href="{{ admin_url('conversations') }}"><i class="fa fa-arrow-left"></i> 返回 Ticket 队列</a>
 
@@ -88,10 +94,50 @@
 
         <div class="box box-success">
             <div class="box-header with-border"><h3 class="box-title">回复草稿</h3></div>
+            <div class="box-body" style="border-bottom:1px solid #eee">
+                <form method="post" action="{{ admin_url('conversations/'.$ticket->id.'/generate-draft') }}">
+                    @csrf
+                    <button class="btn btn-primary" @disabled($latestTicketWorkItem && in_array($latestTicketWorkItem->status, ['queued', 'running'], true))>
+                        <i class="fa fa-magic"></i> 通过 n8n 生成 AI Draft
+                    </button>
+                    <span class="text-muted" style="margin-left:10px">shadow 模式：只生成本地草稿，不发送、不执行业务动作。</span>
+                </form>
+                @if($latestTicketWorkItem)
+                    <hr>
+                    <dl class="detail-kv">
+                        <dt>WorkItem</dt><dd>{{ $latestTicketWorkItem->work_item_key }}</dd>
+                        <dt>运行状态</dt><dd>{{ $latestTicketWorkItem->status }}@if(data_get($latestTicketWorkItem->result, 'draft_status')) / {{ data_get($latestTicketWorkItem->result, 'draft_status') }}@endif</dd>
+                        <dt>工作流</dt><dd>{{ $latestTicketWorkItem->workflow_key }}@{{ $latestTicketWorkItem->workflow_version }}</dd>
+                        <dt>尝试次数</dt><dd>{{ $latestTicketWorkItem->attempt_count }} / {{ $latestTicketWorkItem->max_attempts }}</dd>
+                    </dl>
+                    @if($latestTicketWorkItem->error_message)<div class="alert alert-danger" style="margin-bottom:0">{{ $latestTicketWorkItem->error_message }}</div>@endif
+                    @if(data_get($latestTicketWorkItem->result, 'safety_flags'))
+                        <div class="alert alert-warning" style="margin-bottom:0"><strong>安全检查：</strong><ul>@foreach(data_get($latestTicketWorkItem->result, 'safety_flags', []) as $flag)<li>{{ $flag }}</li>@endforeach</ul></div>
+                    @endif
+                    @if(data_get($latestTicketWorkItem->result, 'plan.intents'))
+                        <p><strong>识别意图：</strong> {{ implode('、', data_get($latestTicketWorkItem->result, 'plan.intents', [])) }}</p>
+                    @endif
+                    @if(data_get($latestTicketWorkItem->result, 'facts'))
+                        <p><strong>只读事实：</strong></p>
+                        <ul>
+                            @foreach(data_get($latestTicketWorkItem->result, 'facts', []) as $fact)
+                                <li><code>{{ data_get($fact, 'key') }}</code> = {{ is_scalar(data_get($fact, 'value')) ? var_export(data_get($fact, 'value'), true) : json_encode(data_get($fact, 'value'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }} <span class="text-muted">（{{ data_get($fact, 'source') }}，{{ data_get($fact, 'captured_at') }}）</span></li>
+                            @endforeach
+                        </ul>
+                    @endif
+                    @if(data_get($latestTicketWorkItem->result, 'missing_facts'))
+                        <p><strong>缺失事实：</strong> {{ implode('、', data_get($latestTicketWorkItem->result, 'missing_facts', [])) }}</p>
+                    @endif
+                    @if(data_get($latestTicketWorkItem->result, 'knowledge_articles'))
+                        <p><strong>使用 Policy：</strong></p>
+                        <ul>@foreach(data_get($latestTicketWorkItem->result, 'knowledge_articles', []) as $policy)<li>#{{ data_get($policy, 'id') }} {{ data_get($policy, 'key') }} v{{ data_get($policy, 'version') }}</li>@endforeach</ul>
+                    @endif
+                @endif
+            </div>
             <form method="post" action="{{ admin_url('conversations/'.$ticket->id.'/draft') }}">
                 @csrf
                 <div class="box-body">
-                    <div class="alert alert-info"><i class="fa fa-info-circle"></i> 当前只保存到本地，不会发送至 HelpDesk。</div>
+                    <div class="alert alert-info"><i class="fa fa-info-circle"></i> 当前只保存到本地，不会发送至 HelpDesk。@if($draft) 当前内容来源：{{ $draft->source }}，状态：{{ $draft->status }}。@endif</div>
                     <div class="form-group"><label>草稿内容</label><textarea class="form-control" rows="8" name="body" placeholder="输入回复或内部备注草稿">{{ old('body', $draft?->body) }}</textarea></div>
                     <div class="row">
                         <div class="col-sm-6"><div class="checkbox"><label><input type="checkbox" name="is_private" value="1" @checked(old('is_private', $draft?->is_private))> 私密备注</label></div></div>
@@ -100,6 +146,25 @@
                 </div>
                 <div class="box-footer"><button class="btn btn-success"><i class="fa fa-save"></i> 保存本地草稿</button>@if($draft)<span class="text-muted" style="margin-left:10px">上次保存：{{ $draft->updated_at->format('Y-m-d H:i:s') }}</span>@endif</div>
             </form>
+            @if($draft?->source === 'n8n')
+                <form method="post" action="{{ admin_url('conversations/'.$ticket->id.'/drafts/'.$draft->id.'/review') }}" style="border-top:1px solid #eee">
+                    @csrf
+                    <div class="box-body">
+                        <div class="form-group"><label>审核后的回复内容</label><textarea class="form-control" rows="5" name="body" @disabled($draft->status === 'blocked')>{{ $draft->body }}</textarea></div>
+                        <div class="form-group">
+                            <label>AI Draft 人工审核</label>
+                            <select class="form-control" name="review_outcome" required>
+                                <option value="accepted_as_is" @selected($draft->review_outcome === 'accepted_as_is') @disabled($draft->status === 'blocked')>原样采用</option>
+                                <option value="edited" @selected($draft->review_outcome === 'edited') @disabled($draft->status === 'blocked')>编辑后采用</option>
+                                <option value="rejected" @selected($draft->review_outcome === 'rejected')>拒绝</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>审核备注</label><textarea class="form-control" rows="2" name="review_notes">{{ $draft->review_notes }}</textarea></div>
+                        <button class="btn btn-warning"><i class="fa fa-check"></i> 保存审核结果</button>
+                        <span class="text-muted" style="margin-left:10px">审核不等于发送。</span>
+                    </div>
+                </form>
+            @endif
         </div>
     </main>
 

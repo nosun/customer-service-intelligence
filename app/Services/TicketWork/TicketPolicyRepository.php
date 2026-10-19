@@ -1,0 +1,66 @@
+<?php
+
+namespace App\Services\TicketWork;
+
+use App\Models\KnowledgeArticle;
+use Illuminate\Support\Collection;
+
+class TicketPolicyRepository
+{
+    /** @param list<string> $intents @return list<string> */
+    public function baselineKeys(array $intents): array
+    {
+        $map = [
+            'production_order_status' => ['production_status_eta_verification'],
+            'logistics_tracking_delivery' => ['shipped_order_tracking_and_eta_communication'],
+        ];
+
+        return collect($intents)->flatMap(fn (string $intent): array => $map[$intent] ?? [])
+            ->unique()->values()->all();
+    }
+
+    /** @return Collection<int,KnowledgeArticle> */
+    public function available(?string $siteKey): Collection
+    {
+        return KnowledgeArticle::query()
+            ->where('status', 'verified')
+            ->where('key', 'not like', 'qa_%')
+            ->where(function ($query) use ($siteKey): void {
+                $query->whereNull('site_key');
+                if ($siteKey !== null && $siteKey !== '') {
+                    $query->orWhere('site_key', $siteKey);
+                }
+            })
+            ->orderBy('key')
+            ->get();
+    }
+
+    /** @param list<string> $keys @return Collection<int,KnowledgeArticle> */
+    public function selected(?string $siteKey, array $keys): Collection
+    {
+        $keys = array_values(array_unique(array_filter($keys, 'is_string')));
+
+        return $this->available($siteKey)->whereIn('key', $keys)->values();
+    }
+
+    /** @return array<string,mixed> */
+    public function payload(KnowledgeArticle $article): array
+    {
+        return [
+            'id' => $article->id,
+            'key' => $article->key,
+            'version' => $article->version,
+            'title' => $article->title,
+            'knowledge_type' => $article->knowledge_type,
+            'applicability' => $article->applicability,
+            'automation_tier' => $article->automation_tier,
+            'required_facts' => $article->required_facts,
+            'policy_rules' => $article->policy_rules,
+            'decision_tree' => $article->decision_tree,
+            'reply_strategy' => $article->reply_strategy,
+            'reply_templates' => $article->reply_templates,
+            'prohibited_claims' => $article->prohibited_claims,
+            'escalation_rules' => $article->escalation_rules,
+        ];
+    }
+}

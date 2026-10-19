@@ -34,6 +34,17 @@ Schedule::command('product-questions:reap-draft-requests')
     ->timezone('Asia/Shanghai')
     ->withoutOverlapping(5);
 
+Schedule::command('tickets:reap-draft-work-items')
+    ->everyMinute()
+    ->timezone('Asia/Shanghai')
+    ->withoutOverlapping(5);
+
+Schedule::command('tickets:draft-workflow-health --hours=1 --fail-on-unhealthy')
+    ->everyFiveMinutes()
+    ->timezone('Asia/Shanghai')
+    ->withoutOverlapping(5)
+    ->onFailure(fn () => Log::critical('Ticket n8n Draft workflow health check failed.'));
+
 Schedule::command('product-questions:draft-workflow-health --hours=1 --fail-on-unhealthy')
     ->everyFiveMinutes()
     ->timezone('Asia/Shanghai')

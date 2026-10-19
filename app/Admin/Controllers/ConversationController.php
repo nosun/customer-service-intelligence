@@ -9,6 +9,10 @@ use App\Models\ConversationDraft;
 use App\Models\DecisionCase;
 use App\Models\DecisionNode;
 use App\Services\Cancellations\CancellationCaseVerifier;
+use App\Services\N8n\N8nTicketDraftWorkflowClient;
+use App\Services\N8n\WorkflowRegistry;
+use App\Services\TicketWork\N8nTicketDraftService;
+use App\Services\TicketWork\TicketWorkItemManager;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Layout\Content;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,6 +20,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class ConversationController extends Controller
 {
@@ -64,7 +69,9 @@ class ConversationController extends Controller
             'labels',
             'events' => fn ($query) => $query->with('attachments')->orderBy('occurred_at')->orderBy('id'),
             'decisionCase.nodes.evidence.event',
-            'drafts' => fn ($query) => $query->where('status', 'draft')->latest('updated_at'),
+            'drafts' => fn ($query) => $query->whereIn('status', ['draft', 'blocked'])->latest('updated_at'),
+            'runtimeCaseSource.customerCase.workItems' => fn ($query) => $query
+                ->where('work_type', TicketWorkItemManager::WORK_TYPE)->latest('id'),
             'latestCancellationContext',
         ])->findOrFail($id);
 
@@ -85,17 +92,106 @@ class ConversationController extends Controller
         $userId = (int) Admin::user()->id;
 
         ConversationDraft::updateOrCreate(
-            ['conversation_id' => $ticket->id, 'created_by' => $userId, 'status' => 'draft'],
+            [
+                'conversation_id' => $ticket->id,
+                'created_by' => $userId,
+                'source' => 'manual',
+                'status' => 'draft',
+            ],
             [
                 'body' => trim((string) ($data['body'] ?? '')),
                 'is_private' => (bool) ($data['is_private'] ?? false),
                 'status_after_send' => $data['status_after_send'] ?? null,
-                'source' => 'manual',
                 'updated_by' => $userId,
             ],
         );
 
         admin_toastr('草稿已保存，仅保存在本地。', 'success');
+
+        return back();
+    }
+
+    public function generateDraft(
+        int $id,
+        TicketWorkItemManager $workItems,
+        N8nTicketDraftWorkflowClient $n8n,
+        WorkflowRegistry $workflows,
+    ): RedirectResponse {
+        $ticket = Conversation::query()->with('analysis')->findOrFail($id);
+        if ($ticket->silo !== 'tickets' || ! in_array($ticket->status, ['open', 'pending', 'onhold'], true)) {
+            admin_toastr('只有当前工作区中仍需处理的 Ticket 可以创建在线 Draft WorkItem。', 'warning');
+
+            return back();
+        }
+        try {
+            $workflows->runnable(N8nTicketDraftService::WORKFLOW_KEY, N8nTicketDraftService::WORKFLOW_VERSION);
+            $item = $workItems->create(
+                $ticket,
+                (int) Admin::user()->id,
+                N8nTicketDraftService::WORKFLOW_KEY,
+                N8nTicketDraftService::WORKFLOW_VERSION,
+            );
+            if ($item->wasRecentlyCreated) {
+                $n8n->trigger($item);
+                admin_toastr('Ticket Draft 已进入 n8n shadow 工作流，不会发送到 HelpDesk。', 'success');
+            } else {
+                admin_toastr('相同输入已有正在运行的 Ticket Draft WorkItem。', 'info');
+            }
+        } catch (Throwable $exception) {
+            if (isset($item) && $item->status === 'queued') {
+                $item->update([
+                    'status' => 'failed',
+                    'error_message' => mb_substr($exception->getMessage(), 0, 5000),
+                    'finished_at' => now(),
+                ]);
+            }
+            admin_toastr('无法启动 Ticket Draft：'.mb_substr($exception->getMessage(), 0, 300), 'error');
+        }
+
+        return back();
+    }
+
+    public function reviewDraft(Request $request, int $id, int $draft): RedirectResponse
+    {
+        $conversationDraft = ConversationDraft::query()
+            ->where('conversation_id', $id)
+            ->where('source', 'n8n')
+            ->findOrFail($draft);
+        $data = $request->validate([
+            'review_outcome' => ['required', Rule::in(['accepted_as_is', 'edited', 'rejected'])],
+            'body' => ['nullable', 'string', 'max:100000'],
+            'review_notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+        if ($data['review_outcome'] === 'edited' && trim((string) ($data['body'] ?? '')) === '') {
+            return back()->withErrors(['body' => '编辑后采用时必须保留有效的回复内容。']);
+        }
+        if ($conversationDraft->status === 'blocked' && $data['review_outcome'] !== 'rejected') {
+            return back()->withErrors(['review_outcome' => '被安全门禁阻断的 AI Draft 不能直接采用；请拒绝后另行人工起草。']);
+        }
+        $conversationDraft->update([
+            'body' => $data['review_outcome'] === 'edited'
+                ? trim((string) $data['body'])
+                : $conversationDraft->body,
+            'status' => $data['review_outcome'] === 'rejected' ? 'rejected' : 'draft',
+            'review_outcome' => $data['review_outcome'],
+            'review_notes' => trim((string) ($data['review_notes'] ?? '')) ?: null,
+            'reviewed_by' => (int) Admin::user()->id,
+            'reviewed_at' => now(),
+            'updated_by' => (int) Admin::user()->id,
+        ]);
+        if ($conversationDraft->workItem !== null) {
+            $conversationDraft->workItem->update(['result' => [
+                ...((array) $conversationDraft->workItem->result),
+                'human_review' => [
+                    'outcome' => $data['review_outcome'],
+                    'notes' => trim((string) ($data['review_notes'] ?? '')) ?: null,
+                    'reviewed_by' => (int) Admin::user()->id,
+                    'reviewed_at' => $conversationDraft->reviewed_at?->toIso8601String(),
+                ],
+            ]]);
+        }
+
+        admin_toastr('AI Draft 人工审核结果已保存；仍未发送到 HelpDesk。', 'success');
 
         return back();
     }

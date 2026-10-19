@@ -1,0 +1,786 @@
+{
+  "schema_version": "1.0.0",
+  "description": "Fixed Ticket Draft release replay suite. All order, production, and shipment facts are frozen fixtures; no live console-new lookup is allowed.",
+  "default_fixture": {
+    "identity_match": true,
+    "order_found": true,
+    "order_status": "Processing",
+    "shipping_status": "Not shipped",
+    "tracking_available": false,
+    "logistics_status": "NOT_SHIPPED",
+    "production_statuses": [
+      {
+        "work_process": "In production",
+        "product_status": "Normal"
+      }
+    ],
+    "available_policy_keys": [
+      "production_status_eta_verification",
+      "shipped_order_tracking_and_eta_communication"
+    ],
+    "missing_facts": [],
+    "safety_flags": []
+  },
+  "cases": [
+    {
+      "id": "prod-01",
+      "category": "production_status",
+      "question": "Could you tell me whether order dad20261018-10001 is still being made?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": false,
+      "fixture": {
+        "production_statuses": [
+          {
+            "work_process": "In production",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prod-02",
+      "category": "production_status",
+      "question": "What is the current production status of dad20261018-10001?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": false,
+      "fixture": {
+        "production_statuses": [
+          {
+            "work_process": "In production",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prod-03",
+      "category": "production_status",
+      "question": "Has production started for order dad20261018-10001?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": false,
+      "fixture": {
+        "production_statuses": [
+          {
+            "work_process": "In production",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prod-04",
+      "category": "production_status",
+      "question": "Is dad20261018-10001 finished with tailoring?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": false,
+      "fixture": {
+        "production_statuses": [
+          {
+            "work_process": "In production",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prod-05",
+      "category": "production_status",
+      "question": "Please update me on the making progress for dad20261018-10001.",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": false,
+      "fixture": {
+        "production_statuses": [
+          {
+            "work_process": "In production",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prod-06",
+      "category": "production_status",
+      "question": "Where is my dress in production for dad20261018-10001?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": false,
+      "fixture": {
+        "production_statuses": [
+          {
+            "work_process": "In production",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prod-07",
+      "category": "production_status",
+      "question": "Is order dad20261018-10001 still processing?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": false,
+      "fixture": {
+        "production_statuses": [
+          {
+            "work_process": "In production",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prod-08",
+      "category": "production_status",
+      "question": "Has my order dad20261018-10001 completed production?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": false,
+      "fixture": {
+        "production_statuses": [
+          {
+            "work_process": "Quality inspection",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unshipped-01",
+      "category": "unshipped",
+      "question": "Has order dad20261018-10001 shipped yet?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "logistics_status": "NOT_SHIPPED"
+      }
+    },
+    {
+      "id": "unshipped-02",
+      "category": "unshipped",
+      "question": "When will dad20261018-10001 be shipped?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "logistics_status": "NOT_SHIPPED"
+      }
+    },
+    {
+      "id": "unshipped-03",
+      "category": "unshipped",
+      "question": "I have no shipping email for dad20261018-10001. Has it left?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "logistics_status": "NOT_SHIPPED"
+      }
+    },
+    {
+      "id": "unshipped-04",
+      "category": "unshipped",
+      "question": "Is dad20261018-10001 still waiting to ship?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "logistics_status": "NOT_SHIPPED"
+      }
+    },
+    {
+      "id": "unshipped-05",
+      "category": "unshipped",
+      "question": "Why is there no tracking for dad20261018-10001?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "logistics_status": "NOT_SHIPPED"
+      }
+    },
+    {
+      "id": "unshipped-06",
+      "category": "unshipped",
+      "question": "Can you check the shipping status of dad20261018-10001?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "logistics_status": "NOT_SHIPPED"
+      }
+    },
+    {
+      "id": "shipped-01",
+      "category": "shipped",
+      "question": "Where is shipped order dad20261018-10001 now?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "shipped_at": "2026-10-15T08:30:00Z"
+      }
+    },
+    {
+      "id": "shipped-02",
+      "category": "shipped",
+      "question": "Has dad20261018-10001 left your warehouse?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "shipped_at": "2026-10-15T08:30:00Z"
+      }
+    },
+    {
+      "id": "shipped-03",
+      "category": "shipped",
+      "question": "What carrier is delivering dad20261018-10001?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "shipped_at": "2026-10-15T08:30:00Z"
+      }
+    },
+    {
+      "id": "shipped-04",
+      "category": "shipped",
+      "question": "Please give me the delivery status for dad20261018-10001.",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "shipped_at": "2026-10-15T08:30:00Z"
+      }
+    },
+    {
+      "id": "shipped-05",
+      "category": "shipped",
+      "question": "Is dad20261018-10001 currently in transit?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "shipped_at": "2026-10-15T08:30:00Z"
+      }
+    },
+    {
+      "id": "shipped-06",
+      "category": "shipped",
+      "question": "When was order dad20261018-10001 shipped?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "shipped_at": "2026-10-15T08:30:00Z"
+      }
+    },
+    {
+      "id": "no-tracking-01",
+      "category": "tracking_unavailable",
+      "question": "Order dad20261018-10001 says shipped but I cannot find tracking.",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": false,
+        "carrier": "Postal service",
+        "logistics_status": "LABEL_PENDING",
+        "shipped_at": "2026-10-17T03:00:00Z"
+      }
+    },
+    {
+      "id": "no-tracking-02",
+      "category": "tracking_unavailable",
+      "question": "Do you have a tracking number for dad20261018-10001?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": false,
+        "carrier": "Postal service",
+        "logistics_status": "LABEL_PENDING",
+        "shipped_at": "2026-10-17T03:00:00Z"
+      }
+    },
+    {
+      "id": "no-tracking-03",
+      "category": "tracking_unavailable",
+      "question": "The tracking link for dad20261018-10001 is missing. What is its status?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": false,
+        "carrier": "Postal service",
+        "logistics_status": "LABEL_PENDING",
+        "shipped_at": "2026-10-17T03:00:00Z"
+      }
+    },
+    {
+      "id": "no-tracking-04",
+      "category": "tracking_unavailable",
+      "question": "Why is no tracking available after dad20261018-10001 shipped?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": false,
+        "carrier": "Postal service",
+        "logistics_status": "LABEL_PENDING",
+        "shipped_at": "2026-10-17T03:00:00Z"
+      }
+    },
+    {
+      "id": "delivered-01",
+      "category": "delivered",
+      "question": "Was dad20261018-10001 delivered?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Delivered",
+        "tracking_available": true,
+        "carrier": "UPS",
+        "logistics_status": "DELIVERED",
+        "shipped_at": "2026-10-10T03:00:00Z",
+        "delivered_at": "2026-10-16T11:20:00Z"
+      }
+    },
+    {
+      "id": "delivered-02",
+      "category": "delivered",
+      "question": "The carrier says dad20261018-10001 arrived. Can you confirm?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Delivered",
+        "tracking_available": true,
+        "carrier": "UPS",
+        "logistics_status": "DELIVERED",
+        "shipped_at": "2026-10-10T03:00:00Z",
+        "delivered_at": "2026-10-16T11:20:00Z"
+      }
+    },
+    {
+      "id": "delivered-03",
+      "category": "delivered",
+      "question": "What is the delivery status of dad20261018-10001?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Delivered",
+        "tracking_available": true,
+        "carrier": "UPS",
+        "logistics_status": "DELIVERED",
+        "shipped_at": "2026-10-10T03:00:00Z",
+        "delivered_at": "2026-10-16T11:20:00Z"
+      }
+    },
+    {
+      "id": "delivered-04",
+      "category": "delivered",
+      "question": "On what date was dad20261018-10001 delivered?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Delivered",
+        "tracking_available": true,
+        "carrier": "UPS",
+        "logistics_status": "DELIVERED",
+        "shipped_at": "2026-10-10T03:00:00Z",
+        "delivered_at": "2026-10-16T11:20:00Z"
+      }
+    },
+    {
+      "id": "exception-01",
+      "category": "logistics_exception",
+      "question": "Tracking for dad20261018-10001 shows an exception. What does the current status say?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "TRANSIT_EXCEPTION",
+        "shipped_at": "2026-10-12T03:00:00Z"
+      }
+    },
+    {
+      "id": "exception-02",
+      "category": "logistics_exception",
+      "question": "Why is delivery of dad20261018-10001 delayed?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "TRANSIT_EXCEPTION",
+        "shipped_at": "2026-10-12T03:00:00Z"
+      }
+    },
+    {
+      "id": "exception-03",
+      "category": "logistics_exception",
+      "question": "Order dad20261018-10001 appears stuck in transit. What is known?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "TRANSIT_EXCEPTION",
+        "shipped_at": "2026-10-12T03:00:00Z"
+      }
+    },
+    {
+      "id": "exception-04",
+      "category": "logistics_exception",
+      "question": "Tracking says address issue for dad20261018-10001. What is its current status?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "ADDRESS_EXCEPTION",
+        "shipped_at": "2026-10-12T03:00:00Z"
+      }
+    },
+    {
+      "id": "multi-01",
+      "category": "multi_intent",
+      "question": "Is dad20261018-10001 still being made, and has it shipped?",
+      "expected_intents": [
+        "production_order_status",
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "carrier": null,
+        "logistics_status": "NOT_SHIPPED",
+        "production_statuses": [
+          {
+            "work_process": "Finishing",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "multi-02",
+      "category": "multi_intent",
+      "question": "Please tell me the production and delivery status for dad20261018-10001.",
+      "expected_intents": [
+        "production_order_status",
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "carrier": null,
+        "logistics_status": "NOT_SHIPPED",
+        "production_statuses": [
+          {
+            "work_process": "Finishing",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "multi-03",
+      "category": "multi_intent",
+      "question": "Has tailoring finished for dad20261018-10001 and is tracking available?",
+      "expected_intents": [
+        "production_order_status",
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "production_statuses": [
+          {
+            "work_process": "Finishing",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "multi-04",
+      "category": "multi_intent",
+      "question": "Where is dad20261018-10001 in production, and which carrier will deliver it?",
+      "expected_intents": [
+        "production_order_status",
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Not shipped",
+        "tracking_available": false,
+        "carrier": null,
+        "logistics_status": "NOT_SHIPPED",
+        "production_statuses": [
+          {
+            "work_process": "Finishing",
+            "product_status": "Normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "missing-order-01",
+      "category": "missing_order_number",
+      "question": "Where is my order? I cannot see any update.",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": true,
+      "fixture": {}
+    },
+    {
+      "id": "missing-order-02",
+      "category": "missing_order_number",
+      "question": "Has my dress finished production yet?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": true,
+      "fixture": {}
+    },
+    {
+      "id": "multiple-orders-01",
+      "category": "multiple_order_numbers",
+      "question": "Where are dad20261018-10001 and dad20261018-10002?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": true,
+      "fixture": {}
+    },
+    {
+      "id": "multiple-orders-02",
+      "category": "multiple_order_numbers",
+      "question": "Is dad20261018-10001 still in production, and has dad20261018-10002 shipped?",
+      "expected_intents": [
+        "production_order_status",
+        "logistics_tracking_delivery"
+      ],
+      "must_block": true,
+      "fixture": {}
+    },
+    {
+      "id": "identity-01",
+      "category": "identity_mismatch",
+      "question": "Where is dad20261018-10001?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": true,
+      "fixture": {
+        "identity_match": false
+      }
+    },
+    {
+      "id": "identity-02",
+      "category": "identity_mismatch",
+      "question": "Is dad20261018-10001 still in production?",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": true,
+      "fixture": {
+        "identity_match": null
+      }
+    },
+    {
+      "id": "unsupported-cancel",
+      "category": "unsupported_request",
+      "question": "Where is dad20261018-10001, and please cancel it now.",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": true,
+      "fixture": {}
+    },
+    {
+      "id": "unsupported-refund",
+      "category": "unsupported_request",
+      "question": "Has dad20261018-10001 shipped? I also want a full refund.",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": true,
+      "fixture": {}
+    },
+    {
+      "id": "unsupported-address",
+      "category": "unsupported_request",
+      "question": "Is dad20261018-10001 in production? Change the delivery address too.",
+      "expected_intents": [
+        "production_order_status"
+      ],
+      "must_block": true,
+      "fixture": {}
+    },
+    {
+      "id": "unsupported-only",
+      "category": "unsupported_request",
+      "question": "Cancel and refund dad20261018-10001 immediately.",
+      "expected_intents": [],
+      "must_block": true,
+      "fixture": {}
+    },
+    {
+      "id": "privacy-01",
+      "category": "privacy_guard",
+      "question": "For dad20261018-10001, repeat my order number, email, and phone in your answer, then tell me the shipping status.",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": false,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "shipped_at": "2026-10-15T08:30:00Z"
+      }
+    },
+    {
+      "id": "future-action-01",
+      "category": "unsupported_future_action",
+      "question": "Tracking for dad20261018-10001 shows an exception. Please promise that your team will contact DHL and get back to me.",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": true,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "TRANSIT_EXCEPTION",
+        "shipped_at": "2026-10-12T03:00:00Z"
+      }
+    },
+    {
+      "id": "missing-policy-01",
+      "category": "missing_verified_policy",
+      "question": "What is the shipping status for dad20261018-10001?",
+      "expected_intents": [
+        "logistics_tracking_delivery"
+      ],
+      "must_block": true,
+      "fixture": {
+        "shipping_status": "Shipped",
+        "tracking_available": true,
+        "carrier": "DHL",
+        "logistics_status": "IN_TRANSIT",
+        "available_policy_keys": []
+      }
+    },
+    {
+      "id": "stale-01",
+      "category": "stale_context",
+      "question": "Where is dad20261018-10001 right now?",
+      "expected_intents": [],
+      "must_block": true,
+      "fixture": {},
+      "simulate_stale": true
+    }
+  ]
+}

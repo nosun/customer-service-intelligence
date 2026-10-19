@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Internal\N8nProductQuestionDraftController;
 use App\Http\Controllers\Internal\N8nProductQuestionWorkflowController;
+use App\Http\Controllers\Internal\N8nTicketDraftController;
 use App\Services\ProductQuestions\DressLengthChart;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -25,6 +26,11 @@ Route::prefix('internal/n8n')
         Route::post('/draft-requests/{requestId}/complete', [N8nProductQuestionDraftController::class, 'complete']);
         Route::post('/draft-requests/{requestId}/fail', [N8nProductQuestionDraftController::class, 'fail']);
         Route::post('/ai/structured-completion', [N8nProductQuestionDraftController::class, 'completion']);
+        Route::post('/ticket-work-items/{workItemKey}/start', [N8nTicketDraftController::class, 'start']);
+        Route::post('/ticket-work-items/{workItemKey}/facts', [N8nTicketDraftController::class, 'facts']);
+        Route::post('/ticket-work-items/{workItemKey}/policies', [N8nTicketDraftController::class, 'policies']);
+        Route::post('/ticket-work-items/{workItemKey}/complete', [N8nTicketDraftController::class, 'complete']);
+        Route::post('/ticket-work-items/{workItemKey}/fail', [N8nTicketDraftController::class, 'fail']);
     });
 
 Route::prefix('internal/n8n')

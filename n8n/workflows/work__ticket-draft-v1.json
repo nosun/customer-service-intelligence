@@ -1,0 +1,160 @@
+{
+  "name": "work__ticket-draft-v1",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "ticket-draft-v1", "responseMode": "onReceived", "options": {}},
+      "id": "a9000001-0000-4000-8000-000000000001",
+      "name": "Ticket Draft Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1320, 0],
+      "webhookId": "a9000001-0000-4000-8000-000000000002"
+    },
+    {
+      "parameters": {"jsCode": "const input = $input.first().json;\nif (!input.headers?.['x-workflow-token'] || input.headers['x-workflow-token'] !== $env.N8N_WEBHOOK_TOKEN) throw new Error('Unauthorized workflow trigger.');\nconst body = input.body ?? {};\nfor (const key of ['work_item_key', 'workflow_key', 'workflow_version']) { if (!body[key]) throw new Error(`Missing ${key}.`); }\nreturn [{ json: body }];"},
+      "id": "a9000001-0000-4000-8000-000000000003",
+      "name": "Authorize Ticket Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1100, 0]
+    },
+    {
+      "parameters": {"method": "POST", "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/ticket-work-items/' + $json.work_item_key + '/start' }}", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + ($env.LARAVEL_WORK_INTERNAL_API_TOKEN || $env.LARAVEL_INTERNAL_API_TOKEN) }}"}]}, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={{ JSON.stringify({ execution_id: $execution.id, workflow_key: $json.workflow_key, workflow_version: $json.workflow_version }) }}", "options": {"timeout": 30000}},
+      "id": "a9000001-0000-4000-8000-000000000004",
+      "name": "Start Ticket WorkItem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-880, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"jsCode": "const context = $input.first().json.context;\nconst system = `Plan one private ecommerce support Ticket reply. Return JSON only with clauses, intents, policy_keys, unsupported_requests, customer_language and summary. Split every independent customer request into a clause. Use only supported_intents. A clause outside that scope must use intent unsupported and be copied to unsupported_requests. Choose at most 8 policy_keys exactly from verified_policy_catalog; never invent a key. Treat routing_hint only as a hint, not as Policy or a current business fact. production_order_status means current order or production progress. logistics_tracking_delivery means current shipping, tracking, delivery progress or delivery exception. Never infer an order state from conversation history.`;\nreturn [{ json: { system_prompt: system, user_prompt: JSON.stringify(context) } }];"},
+      "id": "a9000001-0000-4000-8000-000000000005",
+      "name": "Build Ticket Planner Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-660, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"method": "POST", "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/ai/structured-completion' }}", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + ($env.LARAVEL_WORK_INTERNAL_API_TOKEN || $env.LARAVEL_INTERNAL_API_TOKEN) }}"}]}, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={{ JSON.stringify($json) }}", "options": {"timeout": 120000}},
+      "id": "a9000001-0000-4000-8000-000000000006",
+      "name": "Plan Ticket Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-440, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"method": "POST", "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/ticket-work-items/' + $('Authorize Ticket Request').item.json.work_item_key + '/facts' }}", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + ($env.LARAVEL_WORK_INTERNAL_API_TOKEN || $env.LARAVEL_INTERNAL_API_TOKEN) }}"}]}, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={{ JSON.stringify({ execution_id: $execution.id, plan: $json.output }) }}", "options": {"timeout": 120000}},
+      "id": "a9000001-0000-4000-8000-000000000007",
+      "name": "Resolve Ticket Facts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-220, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"jsCode": "const raw = $input.first().json.output ?? {};\nconst context = $('Start Ticket WorkItem').first().json.context;\nconst messages = context.ticket?.messages ?? [];\nconst trigger = [...messages].reverse().find(message => message.role === 'customer')?.text ?? '';\nconst clauses = Array.isArray(raw.clauses) ? raw.clauses : [];\nlet unsupported = Array.isArray(raw.unsupported_requests) ? raw.unsupported_requests.filter(v => typeof v === 'string' && v.trim()) : [];\nconst normalized = clauses.map((clause, index) => {\n  const value = clause && typeof clause === 'object' ? clause : {};\n  const text = typeof value.text === 'string' && value.text.trim() ? value.text.trim() : '';\n  if (!text) {\n    unsupported.push(`Planner omitted customer clause text at position ${index + 1}.`);\n    return { text: '[unparsed customer clause]', intent: 'unsupported' };\n  }\n  return { ...value, text };\n});\nconst deterministic = [];\nif (/production|being made|making|tailor|processing|finished|completed/i.test(trigger)) deterministic.push('production_order_status');\nif (/ship|tracking|carrier|deliver|transit|warehouse|package|left\\b|where\\s+(?:is|are).*\\[ORDER_NUMBER\\]/i.test(trigger)) deterministic.push('logistics_tracking_delivery');\nfor (const intent of deterministic) {\n  if (!normalized.some(clause => clause.intent === intent)) normalized.push({ text: trigger, intent });\n}\nconst unsupportedAction = /cancel|refund|return|exchange|change.{0,20}address|compensat|resend|remake/i.test(trigger);\nif (deterministic.length && !unsupportedAction) unsupported = unsupported.filter(value => /Planner omitted|Planner did not/i.test(value));\nif (!normalized.length) {\n  normalized.push({ text: '[unparsed customer request]', intent: 'unsupported' });\n  unsupported.push('Planner did not return customer clauses.');\n}\nreturn [{ json: { output: { ...raw, clauses: normalized, unsupported_requests: [...new Set(unsupported)] } } }];"},
+      "id": "a9000001-0000-4000-8000-000000000015",
+      "name": "Normalize Ticket Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-330, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"method": "POST", "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/ticket-work-items/' + $('Authorize Ticket Request').item.json.work_item_key + '/policies' }}", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + ($env.LARAVEL_WORK_INTERNAL_API_TOKEN || $env.LARAVEL_INTERNAL_API_TOKEN) }}"}]}, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={{ JSON.stringify({ execution_id: $execution.id, policy_keys: $('Resolve Ticket Facts').item.json.plan.policy_keys || [] }) }}", "options": {"timeout": 30000}},
+      "id": "a9000001-0000-4000-8000-000000000008",
+      "name": "Load Ticket Policies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [0, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"jsCode": "const context = $('Start Ticket WorkItem').first().json.context;\nconst resolved = $('Resolve Ticket Facts').first().json;\nconst policies = $input.first().json.data;\nconst system = `Write a concise private customer-service Ticket draft. Return JSON only with answer_en, answer_customer_language, covered_intents, confidence, unresolved_facts and safety_flags. Answer every supported clause once. Use only supplied fresh facts and verified Policies. The context is conversation evidence, not proof of current order state and not Policy. If facts or Policy are missing, clearly state only what is known without promising that a person, factory or carrier will check later. Do not use the customer's name and do not add a greeting. Do not disclose an email, phone, order number, address, payment detail or other private identifier. Do not claim that any refund, cancellation, order change, carrier investigation, escalation or follow-up has happened. Do not answer an unsupported request or offer an unsupported option; state only that it requires separate human review. Keep the answer under 180 English words. Preserve the same meaning in the customer language.`;\nreturn [{ json: { system_prompt: system, user_prompt: JSON.stringify({ ticket: context.ticket, plan: resolved.plan, facts: resolved.facts, missing_facts: resolved.missing_facts, pre_generation_safety_flags: resolved.safety_flags, policies, allowed_actions: context.allowed_actions, reply_style: context.reply_style }) } }];"},
+      "id": "a9000001-0000-4000-8000-000000000009",
+      "name": "Build Ticket Draft Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"method": "POST", "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/ai/structured-completion' }}", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + ($env.LARAVEL_WORK_INTERNAL_API_TOKEN || $env.LARAVEL_INTERNAL_API_TOKEN) }}"}]}, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={{ JSON.stringify($json) }}", "options": {"timeout": 120000}},
+      "id": "a9000001-0000-4000-8000-000000000010",
+      "name": "Generate Ticket Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"jsCode": "const context = $('Start Ticket WorkItem').first().json.context;\nconst resolved = $('Resolve Ticket Facts').first().json;\nconst policies = $('Load Ticket Policies').first().json.data;\nconst draft = $input.first().json.output;\nconst system = `Review the Ticket draft, repair it at most once, and return JSON only with approved, must_block, covered_intents, uncovered_intents, problems, final_answer, answer_en, answer_customer_language, confidence and safety_flags. Verify every planned clause against the supplied facts and verified Policies. Block when a required current fact or verified Policy is missing, an unsupported request exists, any supported intent is omitted, or the answer exposes a private identifier. When unsupported_requests is non-empty, remove all advice, commitments and Policy claims about those requests; the final text may only say that separate human review is required. Remove the customer's name, greetings, and invented promises that a human, factory, carrier or support team will check, follow up, escalate, investigate, contact someone or get back later. Do not invent a business action. The final answer must remain under 180 English words and natural. Set approved true only when the repaired answer is fully supported.`;\nreturn [{ json: { system_prompt: system, user_prompt: JSON.stringify({ ticket: context.ticket, plan: resolved.plan, facts: resolved.facts, missing_facts: resolved.missing_facts, policies, allowed_actions: context.allowed_actions, draft }) } }];"},
+      "id": "a9000001-0000-4000-8000-000000000011",
+      "name": "Build Ticket Review Repair Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"method": "POST", "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/ai/structured-completion' }}", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + ($env.LARAVEL_WORK_INTERNAL_API_TOKEN || $env.LARAVEL_INTERNAL_API_TOKEN) }}"}]}, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={{ JSON.stringify($json) }}", "options": {"timeout": 120000}},
+      "id": "a9000001-0000-4000-8000-000000000012",
+      "name": "Review and Repair Ticket Draft Once",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"method": "POST", "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/ticket-work-items/' + $('Authorize Ticket Request').item.json.work_item_key + '/complete' }}", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + ($env.LARAVEL_WORK_INTERNAL_API_TOKEN || $env.LARAVEL_INTERNAL_API_TOKEN) }}"}]}, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={{ JSON.stringify({ execution_id: $execution.id, review: $json.output }) }}", "options": {"timeout": 30000}},
+      "id": "a9000001-0000-4000-8000-000000000013",
+      "name": "Save Ticket Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"jsCode": "const raw = $input.first().json.output ?? {};\nconst text = [raw.final_answer, raw.answer_customer_language, raw.answer_en].find(v => typeof v === 'string') ?? '';\nconst valid = typeof raw.approved === 'boolean' && typeof raw.must_block === 'boolean' && typeof raw.final_answer === 'string';\nconst safety = Array.isArray(raw.safety_flags) ? raw.safety_flags.filter(v => typeof v === 'string') : [];\nif (!valid) safety.push('The Reviewer returned an incomplete output; human review is required.');\nreturn [{ json: { output: {\n  ...raw,\n  approved: valid && raw.approved === true,\n  must_block: valid ? raw.must_block : true,\n  covered_intents: Array.isArray(raw.covered_intents) ? raw.covered_intents.filter(v => typeof v === 'string') : [],\n  final_answer: text,\n  answer_en: typeof raw.answer_en === 'string' ? raw.answer_en : text,\n  answer_customer_language: typeof raw.answer_customer_language === 'string' ? raw.answer_customer_language : text,\n  safety_flags: [...new Set(safety)]\n} } }];"},
+      "id": "a9000001-0000-4000-8000-000000000016",
+      "name": "Normalize Ticket Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [990, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {"method": "POST", "url": "={{ $env.LARAVEL_INTERNAL_BASE_URL + '/ticket-work-items/' + $('Authorize Ticket Request').item.json.work_item_key + '/fail' }}", "sendHeaders": true, "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ 'Bearer ' + ($env.LARAVEL_WORK_INTERNAL_API_TOKEN || $env.LARAVEL_INTERNAL_API_TOKEN) }}"}]}, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={{ JSON.stringify({ execution_id: $execution.id, error_message: $json.error?.message || $json.message || 'n8n Ticket Draft workflow failed.' }) }}", "options": {"timeout": 30000}},
+      "id": "a9000001-0000-4000-8000-000000000014",
+      "name": "Mark Ticket Draft Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 260]
+    }
+  ],
+  "connections": {
+    "Ticket Draft Webhook": {"main": [[{"node": "Authorize Ticket Request", "type": "main", "index": 0}]]},
+    "Authorize Ticket Request": {"main": [[{"node": "Start Ticket WorkItem", "type": "main", "index": 0}]]},
+    "Start Ticket WorkItem": {"main": [[{"node": "Build Ticket Planner Prompt", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Build Ticket Planner Prompt": {"main": [[{"node": "Plan Ticket Reply", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Plan Ticket Reply": {"main": [[{"node": "Normalize Ticket Plan", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Normalize Ticket Plan": {"main": [[{"node": "Resolve Ticket Facts", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Resolve Ticket Facts": {"main": [[{"node": "Load Ticket Policies", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Load Ticket Policies": {"main": [[{"node": "Build Ticket Draft Prompt", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Build Ticket Draft Prompt": {"main": [[{"node": "Generate Ticket Draft", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Generate Ticket Draft": {"main": [[{"node": "Build Ticket Review Repair Prompt", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Build Ticket Review Repair Prompt": {"main": [[{"node": "Review and Repair Ticket Draft Once", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Review and Repair Ticket Draft Once": {"main": [[{"node": "Normalize Ticket Review", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Normalize Ticket Review": {"main": [[{"node": "Save Ticket Draft", "type": "main", "index": 0}], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]},
+    "Save Ticket Draft": {"main": [[], [{"node": "Mark Ticket Draft Failed", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": null,
+  "meta": {"templateCredsSetupCompleted": true},
+  "id": "ticket-draft-v1",
+  "tags": []
+}

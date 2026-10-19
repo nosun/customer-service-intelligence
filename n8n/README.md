@@ -4,12 +4,17 @@
 
 - `analysis/qa-analysis-v1`：选择问答并调用与批量命令相同的 `ProductQuestionBatchAnalyzer`；单条重跑只是批量分析器的一条记录，不再维护第二套生产分析入口；
 - `work/qa-draft-agent-v1`：当前发布版本 `1.1.0`；候选版本 `1.2.0` 处于 `evaluating`。它由 Laravel 后台异步触发，执行 clause 拆分与分类、事实解析、Policy 检索、英文生成、目标语言翻译、Review、单次 Repair、Final Review，并把草稿回写 Laravel。
+- `work/ticket-draft-v1`：Ticket 在线运行中心候选版本 `1.0.0`。当前只处理订单/生产进度和物流进度，使用阶段截止上下文、console-new 只读事实和 verified Policy，完成 Draft、Review/Repair 后只保存本地草稿。
+
+Ticket Workflow 的发布验证使用 `resources/data/ticket-draft-replay-v1.json` 和 `tickets:run-n8n-draft-replay`。回放仍走真实 n8n Webhook，但 Fact Gateway 只读取 checksum 绑定的冻结 Fixture，不访问实时订单状态；回放 Case/WorkItem 使用独立类型和队列，默认运行后清理。
 
 `1.2.0` 增加确定性回放 fixture、缺失意图纠正、多意图覆盖校验、风险矩阵、商品标题/SN 清理和无 Action Proposal 时的后续动作承诺拦截。Policy 未经人工确认时只生成保守的 blocked Draft，不会被当成 verified Policy 使用。
 
 n8n 负责 AI 节点与流程编排。业务数据、MiniMax 凭据、Policy、事实白名单、最终安全校验和 Draft 审计仍由 Laravel 管理；工作流不会调用 Preview 或 Confirm。
 
 运行中心与分析中心当前采用逻辑隔离、同仓部署：`work/*` 只读取已发布的 verified Policy；`analysis/*` 只生成分析结果、证据和候选，不发布 Policy，也不执行业务写操作。生产环境应把两类 Workflow 放入不同 n8n Project，并分别限制环境变量和执行权限。物理拆库、拆仓和 Temporal 迁移要等 Fact、Policy 与 Workflow 契约稳定后再进行。
+
+Ticket 的研究资产与在线运行保持硬边界：`DecisionCase`、`DecisionNode`、Research Finding 和历史客服回复不能被在线 Workflow 当作 Policy；只有人工发布的 `verified KnowledgeArticle` 可以进入运行中心。运行说明见 `docs/runbooks/ticket-n8n-shadow-workflow.md`。
 
 工厂能力聚合命令现在只更新证据卡片，不再隐式创建或更新 Policy 候选。`product-questions:import-factory-capability-policies` 和 `product-questions:import-draft-policy-reviews` 仅用于当前存量数据的一次性/人工迁移，不进入 Scheduler；正式 Policy 的唯一发布入口是后台 Draft → Review → Publish 及其不可变版本记录。
 
