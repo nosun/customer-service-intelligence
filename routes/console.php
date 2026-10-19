@@ -29,6 +29,12 @@ Schedule::command('chatbot:sync --chat-limit=80')
     ->timezone('Asia/Shanghai')
     ->withoutOverlapping(30);
 
+Schedule::command('product-questions:sync')
+    ->everySixHours()
+    ->timezone('Asia/Shanghai')
+    ->withoutOverlapping(360)
+    ->onFailure(fn () => Log::critical('Product question synchronization failed.'));
+
 Schedule::command('product-questions:reap-draft-requests')
     ->everyMinute()
     ->timezone('Asia/Shanghai')
