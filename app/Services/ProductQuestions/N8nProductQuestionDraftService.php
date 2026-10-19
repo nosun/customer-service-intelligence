@@ -6,6 +6,8 @@ use App\Models\KnowledgeArticle;
 use App\Models\ProductQuestion;
 use App\Models\ProductQuestionDraft;
 use App\Models\ProductQuestionDraftRequest;
+use App\Services\AI\DraftCompletionClient;
+use App\Services\Knowledge\KnowledgeResolver;
 use App\Services\N8n\WorkflowRegistry;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +15,8 @@ use RuntimeException;
 
 class N8nProductQuestionDraftService
 {
+    public const REPLY_STYLE_VERSION = 'decision-v11-service-strategy';
+
     public const WORKFLOW_KEY = 'work/qa-draft-agent-v1';
 
     public const WORKFLOW_VERSION = '1.1.0';
@@ -25,6 +29,7 @@ class N8nProductQuestionDraftService
         private readonly ProductQuestionDraftPlanGuard $planGuard,
         private readonly ProductQuestionDraftInput $input,
         private readonly WorkflowRegistry $workflows,
+        private readonly KnowledgeResolver $knowledge,
     ) {}
 
     /** @return array<string, mixed> */
@@ -87,7 +92,7 @@ class N8nProductQuestionDraftService
             ] : null,
             'available_policies' => $policies->map(fn (KnowledgeArticle $article): array => [
                 'id' => $article->id,
-                'intent' => $this->intent($article, $question->site->site_key),
+                'intent' => $this->intent($article),
                 'title' => $article->title,
                 'applicability' => $article->applicability,
                 'automation_tier' => $article->automation_tier,
@@ -97,7 +102,8 @@ class N8nProductQuestionDraftService
             'fact_contract_version' => ProductQuestionFactContract::VERSION,
             'fact_contract' => $this->contract->definitions(),
             'reply_style' => [
-                'lead_with_direct_answer' => true,
+                'respond_to_customer_concern' => true,
+                'prefer_conversational_guidance' => true,
                 'concise' => true,
                 'warm_customer_service_voice' => true,
                 'natural_and_polished' => true,
@@ -136,7 +142,7 @@ class N8nProductQuestionDraftService
         $question = $request->question()->with('site')->firstOrFail();
         $allowed = $this->availablePolicies($question);
         $selected = $allowed->filter(fn (KnowledgeArticle $article): bool => in_array(
-            $this->intent($article, $question->site->site_key),
+            $this->intent($article),
             $intents,
             true,
         ));
@@ -144,7 +150,7 @@ class N8nProductQuestionDraftService
         return ['data' => $selected->map(fn (KnowledgeArticle $article): array => [
             'id' => $article->id,
             'version' => $article->version,
-            'intent' => $this->intent($article, $question->site->site_key),
+            'intent' => $this->intent($article),
             'title' => $article->title,
             'applicability' => $article->applicability,
             'automation_tier' => $article->automation_tier,
@@ -194,41 +200,96 @@ class N8nProductQuestionDraftService
         $factSources = array_values((array) ($payload['fact_sources'] ?? []));
         $missing = array_values(array_unique(array_filter((array) ($payload['missing_facts'] ?? []), 'is_string')));
         $review = (array) ($payload['review'] ?? []);
-        $review = $this->enforcePetiteSizeWorkflow($question, $plan, $facts, $review);
-        $review = $this->enforceCustomSizeWorkflow($question, $plan, $facts, $review);
-        $review = $this->enforcePocketPolicy($question, $plan, $facts, $review);
-        $review = $this->enforceDressLengthWorkflow($plan, $facts, $review);
-        $review = $this->enforceDirectFactResponses($question, $plan, $facts, $review);
+        $decisionPlan = (array) ($review['decision_plan'] ?? []);
+        $usesDecisionPlan = ($decisionPlan['version'] ?? null) === 'customer-decision-v1';
+        // Legacy workflows compose canned replies here; decision workflows save the reviewed prose.
+        if (! $usesDecisionPlan) {
+            $review = $this->enforcePetiteSizeWorkflow($question, $plan, $facts, $review);
+            $review = $this->enforceCustomSizeWorkflow($question, $plan, $facts, $review);
+            $review = $this->enforcePocketPolicy($question, $plan, $facts, $review);
+            $review = $this->enforceDressLengthWorkflow($plan, $facts, $review);
+            $review = $this->enforceDirectFactResponses($question, $plan, $facts, $review);
+        }
         $verifiedPolicyIntents = $this->availablePolicies($question)
-            ->map(fn (KnowledgeArticle $article): string => $this->intent($article, $question->site->site_key))
+            ->map(fn (KnowledgeArticle $article): string => $this->intent($article))
             ->values()
             ->all();
-        $review = $this->enforcePostProductionCancellationPolicy(
-            $question,
-            $plan,
-            $facts,
-            $review,
-            $verifiedPolicyIntents,
-        );
-        if (version_compare($request->workflow_version, '1.2.0', '>=')) {
-            $review = $this->enforceConservativeBlockingResponse($plan, $facts, $missing, $review, $verifiedPolicyIntents);
+        if (! $usesDecisionPlan) {
+            $review = $this->enforcePostProductionCancellationPolicy(
+                $question,
+                $plan,
+                $facts,
+                $review,
+                $verifiedPolicyIntents,
+            );
+            if (version_compare($request->workflow_version, '1.2.0', '>=')) {
+                $review = $this->enforceConservativeBlockingResponse($plan, $facts, $missing, $review, $verifiedPolicyIntents);
+            }
         }
-        $answerEn = $this->sanitizeUnsupportedFollowUpActions(
-            $this->sanitizeProductIdentity(trim((string) ($review['final_answer_en'] ?? '')), $facts, $question),
-            $workflow->allowed_actions ?? [],
-        );
-        $answerLocalized = $this->sanitizeUnsupportedFollowUpActions(
-            $this->sanitizeProductIdentity(trim((string) ($review['final_answer_localized'] ?? '')), $facts, $question),
-            $workflow->allowed_actions ?? [],
-        );
+        if ($usesDecisionPlan) {
+            $answerEn = trim((string) ($review['final_answer_en'] ?? ''));
+            $answerLocalized = trim((string) ($review['final_answer_localized'] ?? ''));
+        } else {
+            $answerEn = $this->sanitizeUnsupportedFollowUpActions(
+                $this->sanitizeProductIdentity(trim((string) ($review['final_answer_en'] ?? '')), $facts, $question),
+                $workflow->allowed_actions ?? [],
+            );
+            $answerLocalized = $this->sanitizeUnsupportedFollowUpActions(
+                $this->sanitizeProductIdentity(trim((string) ($review['final_answer_localized'] ?? '')), $facts, $question),
+                $workflow->allowed_actions ?? [],
+            );
+        }
         $safetyFlags = array_values(array_unique(array_filter([
             ...((array) ($payload['safety_flags'] ?? [])),
             ...((array) ($review['safety_flags'] ?? [])),
         ], 'is_string')));
         $recommendedVisible = (bool) ($payload['recommended_visible'] ?? false);
+        $strategy = (array) ($decisionPlan['service_strategy'] ?? []);
+        $emailHandoff = $usesDecisionPlan
+            && ($strategy['response_mode'] ?? null) === 'email_handoff'
+            && ($strategy['public_value'] ?? null) === 'individual_case'
+            && ($strategy['can_resolve_in_one_reply'] ?? null) === false
+            && ($strategy['recommended_visible'] ?? null) === false
+            && is_array($strategy['email_context'] ?? null)
+            && ! empty($strategy['email_context'])
+            && filter_var($question->site->customer_service_email, FILTER_VALIDATE_EMAIL)
+            && ($strategy['contact_email'] ?? null) === $question->site->customer_service_email
+            && data_get($facts, 'site.customer_service_email') === $question->site->customer_service_email;
+        if ($usesDecisionPlan && $strategy !== []) {
+            $recommendedVisible = $recommendedVisible
+                && ($strategy['recommended_visible'] ?? false) === true
+                && ($strategy['public_value'] ?? null) === 'general_product'
+                && ($strategy['response_mode'] ?? null) === 'answer';
+        }
         $status = ($review['approved'] ?? false) === true && ($review['must_block'] ?? true) === false
             ? 'generated'
             : 'blocked';
+
+        if ($usesDecisionPlan) {
+            if (($strategy['response_mode'] ?? null) === 'human_review'
+                || (($strategy['response_mode'] ?? null) === 'email_handoff'
+                    && (! $emailHandoff || ! str_contains($answerEn, (string) $strategy['contact_email'])))) {
+                $status = 'blocked';
+                $safetyFlags[] = 'Service strategy needs human review or lacks a verified consultation channel.';
+            }
+            if (empty($decisionPlan['customer_goal']) || empty($decisionPlan['answer_units'])) {
+                $status = 'blocked';
+                $safetyFlags[] = 'Decision reply is missing its customer decision plan.';
+            }
+            $qualityChecks = ['factual_accuracy', 'relevance', 'actionable_guidance', 'natural_tone', 'decision_risks', 'intent_coverage', 'language_equivalence'];
+            foreach ($qualityChecks as $check) {
+                if (data_get($review, 'quality_checks.'.$check) !== true) {
+                    $status = 'blocked';
+                    $safetyFlags[] = 'Decision reply quality check failed or missing: '.$check;
+                }
+            }
+            foreach ((array) ($decisionPlan['answer_units'] ?? []) as $unit) {
+                if (! empty($unit['essential_unknowns'])) {
+                    $status = 'blocked';
+                    $safetyFlags[] = 'Essential business evidence remains unverified.';
+                }
+            }
+        }
 
         if ($answerEn === '') {
             $status = 'blocked';
@@ -246,7 +307,7 @@ class N8nProductQuestionDraftService
             $status = 'blocked';
             $safetyFlags[] = 'A public answer contains a private customer or order identifier.';
         }
-        if ($this->containsUnsupportedGenericContactReferral($answerEn.' '.$answerLocalized, (array) ($payload['policies'] ?? []))) {
+        if (! $emailHandoff && $this->containsUnsupportedGenericContactReferral($answerEn.' '.$answerLocalized, (array) ($payload['policies'] ?? []))) {
             $status = 'blocked';
             $safetyFlags[] = 'The answer adds a generic contact referral that is not required by the selected policy.';
         }
@@ -258,8 +319,13 @@ class N8nProductQuestionDraftService
             $status = 'blocked';
             $safetyFlags[] = 'The answer promises a follow-up action that this workflow cannot execute.';
         }
-        if (version_compare($request->workflow_version, '1.2.0', '>=')) {
+        if ($usesDecisionPlan || version_compare($request->workflow_version, '1.2.0', '>=')) {
             $blockingReasons = $this->planGuard->blockingReasons($plan['intents'], $facts, $missing, $verifiedPolicyIntents);
+            // A broad individual consultation can be routed without asserting alteration feasibility.
+            // Specific unsupported alterations and other independent requests retain their guards.
+            if ($emailHandoff) {
+                $blockingReasons = array_values(array_diff($blockingReasons, ['intent_requires_human_review:request_other_customization']));
+            }
             if ($blockingReasons !== []) {
                 $status = 'blocked';
                 $safetyFlags = [...$safetyFlags, ...$blockingReasons];
@@ -273,6 +339,9 @@ class N8nProductQuestionDraftService
 
         $knowledgeArticleIds = collect((array) ($payload['policies'] ?? []))
             ->pluck('id')->filter(fn (mixed $id): bool => is_numeric($id))->map(fn ($id): int => (int) $id)->values()->all();
+        $formatter = app(ProductQuestionReplyFormatter::class);
+        $answerEn = $formatter->format($answerEn);
+        $answerLocalized = $formatter->format($answerLocalized);
         $draft = DB::transaction(function () use (
             $request,
             $question,
@@ -293,8 +362,8 @@ class N8nProductQuestionDraftService
             $draft = ProductQuestionDraft::create([
                 'product_question_id' => $question->id,
                 'status' => $status,
-                'provider' => 'minimax',
-                'model' => (string) ($payload['model'] ?? config('services.minimax.model')),
+                'provider' => app(DraftCompletionClient::class)->provider(),
+                'model' => app(DraftCompletionClient::class)->model(),
                 'prompt_version' => $workflow->prompt_version ?: self::PROMPT_VERSION,
                 'intents' => $plan['intents'],
                 'knowledge_article_ids' => $knowledgeArticleIds,
@@ -358,30 +427,12 @@ class N8nProductQuestionDraftService
     /** @return Collection<int, KnowledgeArticle> */
     private function availablePolicies(ProductQuestion $question): Collection
     {
-        $prefixes = ['qa_global_', 'qa_'.$question->site->site_key.'_'];
-
-        return KnowledgeArticle::query()
-            ->where('status', 'verified')
-            ->where(function ($query) use ($prefixes): void {
-                foreach ($prefixes as $prefix) {
-                    $query->orWhere('key', 'like', $prefix.'%');
-                }
-            })
-            ->orderByRaw('site_key is null')
-            ->get()
-            ->unique(fn (KnowledgeArticle $article): string => $this->intent($article, $question->site->site_key))
-            ->values();
+        return $this->knowledge->available('product_question', $question->site->site_key);
     }
 
-    private function intent(KnowledgeArticle $article, string $siteKey): string
+    private function intent(KnowledgeArticle $article): string
     {
-        foreach (['qa_'.$siteKey.'_', 'qa_global_'] as $prefix) {
-            if (str_starts_with($article->key, $prefix)) {
-                return substr($article->key, strlen($prefix));
-            }
-        }
-
-        return $article->key;
+        return $this->knowledge->intentKey($article);
     }
 
     /** @return array<string, mixed> */
@@ -532,6 +583,8 @@ class N8nProductQuestionDraftService
             $answer = preg_replace('/'.preg_quote(trim($productName), '/').'/iu', 'this item', $answer) ?? $answer;
         }
         if (is_string($productUrl) && $productUrl !== '') {
+            // Preserve the label when removing a product URL from a Markdown link.
+            $answer = preg_replace('/\[([^\]]+)\]\(<?'.preg_quote($productUrl, '/').'>?\)/iu', '$1', $answer) ?? $answer;
             $answer = str_ireplace($productUrl, '', $answer);
         }
         if ($question->sn !== '') {
@@ -564,6 +617,11 @@ class N8nProductQuestionDraftService
     private function sanitizeUnsupportedFollowUpActions(string $answer, array $allowedActions): string
     {
         if ($answer === '' || $allowedActions !== []) {
+            return $answer;
+        }
+        if (! $this->containsUnsupportedFollowUpAction($answer, [])
+            && preg_match('/\b(?:we can|we can separately|let us)\s+(?:check|verify|review|investigate|look into|follow up|double-check|confirm|know)\b/iu', $answer) !== 1
+        ) {
             return $answer;
         }
         $sentences = preg_split('/(?<=[.!?])\s+/u', $answer) ?: [$answer];

@@ -58,7 +58,17 @@
                 <div class="box-body">
                     <p>确认令牌有效期至：{{ $preview['confirm_expires_at'] ?? '—' }} @if($notification) · 通知计划：<strong>{{ $notification }}</strong>@endif</p>
                     @forelse(($preview['changes'] ?? []) as $field => $change)
-                        <div class="qa-change"><strong>{{ $field }}</strong><div><small>修改前</small><br>{{ is_scalar($change['before'] ?? null) || ($change['before'] ?? null) === null ? ($change['before'] ?? 'null') : json_encode($change['before'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</div><div><small>修改后</small><br>{{ is_scalar($change['after'] ?? null) || ($change['after'] ?? null) === null ? ($change['after'] ?? 'null') : json_encode($change['after'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</div></div>
+                        <div class="qa-change"><strong>{{ $field }}</strong>
+                            @foreach(['before' => '修改前', 'after' => '修改后'] as $side => $label)
+                                <div><small>{{ $label }}</small><br>
+                                    @if($field === 'answer' && is_string($change[$side] ?? null))
+                                        <div class="qa-content">{!! app(\App\Services\ProductQuestions\ProductQuestionReplyFormatter::class)->format($change[$side]) !!}</div>
+                                    @else
+                                        {{ is_scalar($change[$side] ?? null) || ($change[$side] ?? null) === null ? ($change[$side] ?? 'null') : json_encode($change[$side], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
                     @empty
                         <p class="text-muted">没有字段变化。</p>
                     @endforelse
@@ -81,12 +91,16 @@
                         <dt>状态</dt><dd>{{ $draft->status }}</dd>
                         <dt>意图</dt><dd>{{ implode('、', $draft->intents ?: []) ?: '—' }}</dd>
                         <dt>建议可见性</dt><dd>{{ $draft->recommended_visible ? '公开' : '隐藏/私密' }}</dd>
+                        @if($serviceStrategy = data_get($draft->usage, 'decision_review.plan.service_strategy'))
+                            <dt>回复方向</dt><dd>{{ ['answer' => '本轮回答', 'email_handoff' => '邮件继续咨询', 'human_review' => '人工核实'][$serviceStrategy['response_mode'] ?? ''] ?? '—' }}</dd>
+                            <dt>判断依据</dt><dd>{{ $serviceStrategy['reason'] ?? '—' }}</dd>
+                        @endif
                         <dt>缺失事实</dt><dd>{{ implode('；', $draft->missing_facts ?: []) ?: '无' }}</dd>
                         <dt>安全提示</dt><dd>{{ implode('；', $draft->safety_flags ?: []) ?: '无' }}</dd>
                         <dt>置信度</dt><dd>{{ $draft->confidence === null ? '—' : number_format($draft->confidence * 100, 1).'%' }}</dd>
                     </dl>
                     @if($draft->answer())
-                        <hr><strong>草稿内容</strong><div class="qa-content">{{ $draft->answer() }}</div>
+                        <hr><strong>草稿内容</strong><div class="qa-content">{!! app(\App\Services\ProductQuestions\ProductQuestionReplyFormatter::class)->format($draft->answer()) !!}</div>
                     @endif
                     @if($draft->error_message)<div class="alert alert-danger" style="margin-top:12px">{{ $draft->error_message }}</div>@endif
                 @else
@@ -118,7 +132,11 @@
                 @csrf<input type="hidden" name="site_id" value="{{ $site->id }}">
                 <div class="box-body">
                     @if($errors->any())<div class="alert alert-danger"><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
-                    <div class="form-group"><label>回答</label><textarea class="form-control" name="answer" rows="8" required maxlength="100000">{{ old('answer', $draft?->status === 'generated' ? $draft->answer() : $question->answer) }}</textarea></div>
+                    <div class="form-group"><label>回答（HTML）</label><textarea id="qa-answer-source" class="form-control" name="answer" rows="8" required maxlength="100000">{{ old('answer', $draft?->status === 'generated' ? app(\App\Services\ProductQuestions\ProductQuestionReplyFormatter::class)->format($draft->answer() ?? '') : $question->answer) }}</textarea></div>
+                    <div class="form-group"><label>实时效果预览</label>
+                        <iframe id="qa-answer-preview" title="回答实时效果预览" sandbox="" style="display:block;width:100%;height:260px;border:1px solid #ddd;background:#fff"></iframe>
+                        <p class="help-block">上方编辑 HTML，下方实时显示链接、段落和换行；点击“生成 Preview”后再核对修改差异。</p>
+                    </div>
                     <div class="form-group"><label>前端展示</label><select class="form-control" name="visible" required><option value="1" @selected((string)old('visible', $draft ? ($draft->recommended_visible ? '1' : '0') : ($question->visible ? '1' : '0')) === '1')>展示</option><option value="0" @selected((string)old('visible', $draft ? ($draft->recommended_visible ? '1' : '0') : ($question->visible ? '1' : '0')) === '0')>隐藏</option></select></div>
                     <div class="form-group"><label>操作原因 <span class="text-muted">（可选）</span></label><input class="form-control" name="reason" value="{{ old('reason') }}" maxlength="1000" placeholder="工单号或业务依据（如有）"></div>
                     <p class="help-block">先 Preview，不会立即修改站点数据。当前阶段不修改图片和 helpful 数值。</p>
@@ -233,3 +251,19 @@
         </dl></div></div>
     </aside>
 </div>
+
+<script>
+(function () {
+    var source = document.getElementById('qa-answer-source');
+    var preview = document.getElementById('qa-answer-preview');
+    if (!source || !preview) return;
+    function render() {
+        preview.srcdoc = '<!doctype html><html><head><meta charset="utf-8">'
+            + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
+            + '<style>body{font:14px/1.6 sans-serif;margin:12px;overflow-wrap:anywhere}a{color:#337ab7}</style>'
+            + '</head><body>' + source.value + '</body></html>';
+    }
+    source.addEventListener('input', render);
+    render();
+})();
+</script>

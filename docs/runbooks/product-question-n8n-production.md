@@ -1,5 +1,7 @@
 # Product Question n8n 生产运行手册
 
+当前 Draft 的服务策略、内容审核和排版职责见[流程说明](../architecture/product-question-draft-workflow.md)。本地已启用的候选流程不等于已通过生产发布门禁。
+
 ## 发布前
 
 1. 备份 Laravel 数据库与 n8n 数据卷；确认可以从备份恢复。
@@ -7,7 +9,7 @@
 3. 运行 Laravel migration、清理并重建配置缓存，确认 Scheduler 和 Queue Worker 常驻。
 4. 将 `work/*` 与 `analysis/*` 放入不同 n8n Project，仅授予所需环境变量；不向 n8n 提供业务数据库、tradeManager 或 console-new 凭据。
 5. 导入仓库内 Workflow JSON，校验 definition checksum。候选版本先注册为 `evaluating`。
-6. 导入真实 50 条回放到后台，完成事实与 Policy 人工审核。只有门禁报告 `passed=true`，且 checksum 与待发布定义一致，才允许注册为 `active`。
+6. 将当前固定回放集的实际生成结果导入后台，完成事实、Policy 与回复质量人工审核；不要把样本数量或程序测试通过当作质量验收。只有门禁报告 `passed=true`，且 checksum 与待发布定义一致，才允许注册为 `active`。
 
 ## 部署
 

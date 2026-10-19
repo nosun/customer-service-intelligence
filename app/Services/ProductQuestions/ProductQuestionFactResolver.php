@@ -50,6 +50,11 @@ class ProductQuestionFactResolver
             'source' => 'commerce_sites',
             'captured_at' => now()->toIso8601String(),
         ]];
+        // Replay may simulate an unconfigured channel, but cannot invent a site address.
+        if (array_key_exists('customer_service_email', (array) data_get($fixture, 'facts.site'))
+            && data_get($fixture, 'facts.site.customer_service_email') === null) {
+            $facts['site']['customer_service_email'] = null;
+        }
         $missing = [];
         $safetyFlags = [];
         $unmatchedRequests = (array) ($plan['unmatched_requests'] ?? []);
@@ -107,6 +112,11 @@ class ProductQuestionFactResolver
                 ];
                 if (is_array($fixture['product'] ?? null)) {
                     $facts['product'] = array_replace_recursive($facts['product'], $fixture['product']);
+                    foreach ($fixture['product'] as $key => $value) {
+                        if (is_array($value) && (array_is_list($value) || $key === 'size_chart')) {
+                            $facts['product'][$key] = $value;
+                        }
+                    }
                     $sources[] = [
                         'fact_group' => 'product.replay_fixture',
                         'source' => 'product-question-draft-replay-suite',

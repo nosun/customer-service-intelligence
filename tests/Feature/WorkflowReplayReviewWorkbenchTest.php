@@ -52,9 +52,9 @@ class WorkflowReplayReviewWorkbenchTest extends TestCase
             $path,
         );
 
-        $this->assertSame(50, $run->case_count);
+        $this->assertSame(count($suite), $run->case_count);
         $this->assertSame(0, $run->reviewed_count);
-        $this->assertSame(50, $run->cases()->count());
+        $this->assertSame(count($suite), $run->cases()->count());
 
         $administrator = $this->administrator();
         $first = $run->cases()->orderBy('case_key')->firstOrFail();

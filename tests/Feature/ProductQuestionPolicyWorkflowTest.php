@@ -100,12 +100,19 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
                 'review_notes' => '业务确认颜色回复规则。',
             ])->assertRedirect("/admin/product-question-policies/{$candidate->id}");
 
-        $article = KnowledgeArticle::where('key', 'qa_dorriswedding_ask_available_colors')->firstOrFail();
+        $article = KnowledgeArticle::where('key', 'dorriswedding_ask_available_colors')->firstOrFail();
         $this->assertSame('verified', $article->status);
         $this->assertSame('dorriswedding', $article->site_key);
         $this->assertSame('draft_sensitive', $article->automation_tier);
         $this->assertSame('业务确认颜色回复规则。', $candidate->fresh()->review_notes);
         $this->assertSame(2, DB::table('product_question_strategy_evidence')->count());
+        $this->assertDatabaseHas('knowledge_article_bindings', [
+            'knowledge_article_id' => $article->id,
+            'consumer' => 'product_question',
+            'intent_key' => 'ask_available_colors',
+            'usage' => 'draft',
+            'enabled' => true,
+        ]);
 
         $this->post("/admin/product-question-policies/{$candidate->id}/review", [
             'review_status' => 'confirmed',
@@ -228,7 +235,7 @@ class ProductQuestionPolicyWorkflowTest extends TestCase
             'review_notes' => '所有站点使用当前站点域名下的 shipping-info.html。',
         ])->assertRedirect();
 
-        $article = KnowledgeArticle::where('key', 'qa_global_ask_shipping_options')->firstOrFail();
+        $article = KnowledgeArticle::where('key', 'ask_shipping_options')->firstOrFail();
         $this->assertNull($article->site_key);
         $this->assertSame('verified', $article->status);
         $this->assertSame('global', $candidate->fresh()->scope);

@@ -32,7 +32,7 @@
                 <div style="border-bottom:1px solid #eee;padding:10px 0">
                     <strong>{{ $caseId ? 'Workflow 回放 '.$caseId : 'QA #'.$question->external_id }}{{ $question->sn ? ' · '.$question->sn : '' }}</strong>
                     <div style="margin-top:6px"><strong>客户问题：</strong>{{ $question->question }}</div>
-                    @if($draft)<div style="margin-top:6px"><strong>当前草稿：</strong><span style="white-space:pre-wrap">{{ $draft->answer() }}</span></div>@endif
+                    @if($draft)<div style="margin-top:6px"><strong>当前草稿：</strong><span style="white-space:pre-wrap">{!! app(\App\Services\ProductQuestions\ProductQuestionReplyFormatter::class)->format($draft->answer() ?? '') !!}</span></div>@endif
                     @if($draft?->safety_flags)<div class="text-warning" style="margin-top:6px"><strong>阻止原因：</strong>{{ $list($draft->safety_flags) }}</div>@endif
                     @if(!$caseId && $question->answer)<div class="text-muted" style="margin-top:6px;white-space:pre-wrap"><strong>历史回答：</strong>{{ strip_tags((string)$question->answer) }}</div>@endif
                 </div>

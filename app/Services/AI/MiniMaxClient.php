@@ -25,6 +25,7 @@ class MiniMaxClient
         ?string $model = null,
         ?int $timeout = null,
         ?int $maxCompletionTokens = null,
+        private readonly string $provider = 'minimax',
     ) {
         $this->apiKey = trim($apiKey ?? (string) config('services.minimax.api_key'));
         $this->baseUrl = rtrim($baseUrl ?? (string) config('services.minimax.base_url'), '/');
@@ -50,23 +51,27 @@ class MiniMaxClient
     public function structuredCompletion(string $systemPrompt, string $userPrompt): array
     {
         $this->ensureConfigured();
+        $deadline = microtime(true) + $this->completionTimeout();
         for ($attempt = 1; $attempt <= 2; $attempt++) {
-            $response = $this->request()->post('/chat/completions', [
+            $remaining = $deadline - microtime(true);
+            if ($remaining <= 0) {
+                throw new RuntimeException('AI provider completion timed out.');
+            }
+            $response = $this->request($remaining)->post('/chat/completions', [
                 'model' => $this->model,
                 'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $userPrompt],
+                    ['role' => 'system', 'content' => $systemPrompt.($this->provider === 'omniroute' ? "\nReturn only a valid JSON object." : '')],
+                    ['role' => 'user', 'content' => $userPrompt.($this->provider === 'omniroute' ? "\nReturn only a valid JSON object." : '')],
                 ],
-                'temperature' => 0.1,
                 'max_completion_tokens' => $this->maxCompletionTokens,
-                'thinking' => ['type' => 'disabled'],
+                ...($this->provider === 'minimax' ? ['temperature' => 0.1, 'thinking' => ['type' => 'disabled']] : ['response_format' => ['type' => 'json_object']]),
             ]);
             $response->throw();
 
             $content = $response->json('choices.0.message.content');
             try {
                 if (! is_string($content) || trim($content) === '') {
-                    throw new RuntimeException('MiniMax response does not contain message content.');
+                    throw new RuntimeException('AI provider response does not contain message content.');
                 }
 
                 return [
@@ -81,19 +86,23 @@ class MiniMaxClient
             }
         }
 
-        throw new RuntimeException('MiniMax structured completion failed.');
+        throw new RuntimeException('AI provider structured completion failed.');
     }
 
-    private function request(): PendingRequest
+    public function completionTimeout(): int
+    {
+        return min(180, max(30, $this->timeout));
+    }
+
+    private function request(float $remaining): PendingRequest
     {
         return Http::baseUrl($this->baseUrl)
             ->withToken($this->apiKey)
             ->acceptJson()
             ->asJson()
             ->withUserAgent('customer-service-intelligence/0.1')
-            ->connectTimeout(10)
-            ->timeout(max(30, $this->timeout))
-            ->retry(2, 750, throw: false);
+            ->connectTimeout(min(10, $remaining))
+            ->timeout($remaining);
     }
 
     /** @return array<string, mixed> */
@@ -109,11 +118,11 @@ class MiniMaxClient
         try {
             $decoded = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException $exception) {
-            throw new RuntimeException('MiniMax returned invalid JSON.', previous: $exception);
+            throw new RuntimeException('AI provider returned invalid JSON.', previous: $exception);
         }
 
         if (! is_array($decoded) || array_is_list($decoded)) {
-            throw new RuntimeException('MiniMax structured output must be a JSON object.');
+            throw new RuntimeException('AI provider structured output must be a JSON object.');
         }
 
         return $decoded;
@@ -122,8 +131,9 @@ class MiniMaxClient
     private function ensureConfigured(): void
     {
         if (! $this->isConfigured()) {
+            $provider = $this->provider === 'minimax' ? 'MiniMax' : 'AI provider';
             throw new RuntimeException(
-                'MiniMax is not configured. Set MINIMAX_API_KEY, MINIMAX_API_URL and MINIMAX_MODEL.',
+                $provider.' is not configured. Check its API key, base URL and model.',
             );
         }
     }

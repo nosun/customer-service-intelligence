@@ -93,6 +93,9 @@ class RunN8nProductQuestionDraftReplay extends Command
             'fact_error' => null,
             'policy_violation' => null,
             'accepted_as_is' => null,
+            'relevance_ok' => null,
+            'guidance_ok' => null,
+            'tone_ok' => null,
             'review_notes' => null,
         ])->all(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR).PHP_EOL);
         $this->info('predictions='.$output.' cases='.count($predictions));

@@ -79,6 +79,10 @@ class PublishKnowledgeResearch extends Command
             'reviewed_by' => $reviewedBy,
             'reviewed_at' => $status === 'verified' ? now() : null,
         ]);
+        $article->bindings()->updateOrCreate(
+            ['consumer' => 'ticket', 'intent_key' => '*', 'usage' => 'draft'],
+            ['priority' => 100, 'enabled' => true],
+        );
         $finding->update([
             'knowledge_status' => $status,
             'review_status' => $status === 'observed' ? 'candidate' : 'reviewed',

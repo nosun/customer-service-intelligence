@@ -12,6 +12,7 @@ use App\Models\ProductQuestionDraft;
 use App\Models\ProductQuestionDraftRequest;
 use App\Services\ProductQuestions\N8nProductQuestionDraftService;
 use App\Services\ProductQuestions\ProductQuestionBatchAnalyzer;
+use App\Services\ProductQuestions\ProductQuestionDraftInput;
 use App\Services\TradeManager\ProductQuestionSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery\MockInterface;
@@ -25,6 +26,18 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
     {
         parent::setUp();
         config(['services.n8n.internal_api_token' => 'test-n8n-token']);
+    }
+
+    public function test_reply_style_revision_invalidates_legacy_draft_input_hashes(): void
+    {
+        $question = $this->question($this->site(), 891, 'unanswered');
+        $input = app(ProductQuestionDraftInput::class)->capture($question);
+        $this->assertSame(N8nProductQuestionDraftService::REPLY_STYLE_VERSION, $input['snapshot']['workflow']['reply_style_version']);
+        $legacySnapshot = $input['snapshot'];
+        unset($legacySnapshot['workflow']['reply_style_version']);
+        $legacyHash = hash('sha256', json_encode($legacySnapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        $this->assertNotSame($legacyHash, $input['hash']);
+        $this->assertSame($input['hash'], app(ProductQuestionDraftInput::class)->capture($question)['hash']);
     }
 
     public function test_internal_api_requires_its_service_token(): void
@@ -157,7 +170,8 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'escalation_rules' => [],
             'version' => 1,
         ]);
-        KnowledgeArticle::create([
+        $this->bindQuestionPolicy($article, 'ask_pockets');
+        $addPockets = KnowledgeArticle::create([
             'key' => 'qa_global_request_add_pockets',
             'title' => 'Add pockets',
             'knowledge_type' => 'policy',
@@ -174,6 +188,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'escalation_rules' => [],
             'version' => 1,
         ]);
+        $this->bindQuestionPolicy($addPockets, 'request_add_pockets');
         $draftRequest = ProductQuestionDraftRequest::create([
             'request_id' => '019a-test-draft-request',
             'product_question_id' => $question->id,
@@ -259,7 +274,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'sync_status' => 'completed',
             'synced_at' => now(),
         ]);
-        KnowledgeArticle::create([
+        $customSizePolicy = KnowledgeArticle::create([
             'key' => 'qa_global_request_custom_size',
             'title' => 'Custom size entry',
             'knowledge_type' => 'policy',
@@ -276,6 +291,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'escalation_rules' => [],
             'version' => 1,
         ]);
+        $this->bindQuestionPolicy($customSizePolicy, 'request_custom_size');
         $request = ProductQuestionDraftRequest::create([
             'request_id' => '019a-custom-size-request',
             'product_question_id' => $question->id,
@@ -316,7 +332,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
 
         $draft = ProductQuestionDraft::findOrFail($result['draft_id']);
         $this->assertSame('generated', $draft->status);
-        $this->assertSame('You can enter your measurements by opening the Size options and selecting Custom Size. Complete the measurement fields that appear, then continue with your order. For your privacy, please don’t post your measurements in this public Q&A.', $draft->answer_en);
+        $this->assertSame('You can enter your measurements by opening the Size options and selecting Custom Size. Complete the measurement fields that appear, then continue with your order. For your privacy, please don’t post your measurements in this public Q&amp;A.', $draft->answer_en);
         $this->assertStringNotContainsString('business days', $draft->answer_en);
         $this->assertStringNotContainsString('support', strtolower($draft->answer_en));
     }
@@ -343,6 +359,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'escalation_rules' => [],
             'version' => 1,
         ]);
+        $this->bindQuestionPolicy($policy, 'ask_guarantee');
         $request = ProductQuestionDraftRequest::create([
             'request_id' => '019a-generic-contact-request',
             'product_question_id' => $question->id,
@@ -408,6 +425,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'escalation_rules' => [],
             'version' => 1,
         ]);
+        $this->bindQuestionPolicy($policy, 'ask_cancellation_policy');
         $this->candidateWorkflow();
         $request = ProductQuestionDraftRequest::create([
             'request_id' => '019a-policy-contact-request',
@@ -439,7 +457,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
 
         $draft = ProductQuestionDraft::findOrFail($result['draft_id']);
         $this->assertSame('generated', $draft->status);
-        $this->assertSame('Please email support@dressafford.test with your order number and cancellation reason.', $draft->answer_en);
+        $this->assertSame('Please email <a href="mailto:support@dressafford.test">support@dressafford.test</a> with your order number and cancellation reason.', $draft->answer_en);
     }
 
     public function test_verified_policy_generates_a_stable_answer_for_post_production_cancellation_question(): void
@@ -472,6 +490,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'escalation_rules' => [],
             'version' => 1,
         ]);
+        $this->bindQuestionPolicy($policy, 'ask_cancellation_policy');
         $this->candidateWorkflow();
         $request = ProductQuestionDraftRequest::create([
             'request_id' => '019a-policy-cancellation-request',
@@ -585,7 +604,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'synced_at' => now(),
         ]);
         foreach (['request_custom_color', 'request_custom_length'] as $intent) {
-            KnowledgeArticle::create([
+            $policy = KnowledgeArticle::create([
                 'key' => 'qa_global_'.$intent,
                 'title' => $intent,
                 'knowledge_type' => 'policy',
@@ -602,6 +621,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
                 'escalation_rules' => [],
                 'version' => 1,
             ]);
+            $this->bindQuestionPolicy($policy, $intent);
         }
         $request = ProductQuestionDraftRequest::create([
             'request_id' => '019a-custom-color-request',
@@ -630,7 +650,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
         $site = $this->site();
         $question = $this->question($site, 504, 'unanswered');
         $question->update(['question' => 'Where is my order DA12345678?']);
-        KnowledgeArticle::create([
+        $orderStatusPolicy = KnowledgeArticle::create([
             'key' => 'qa_global_ask_order_status',
             'title' => 'Order status',
             'knowledge_type' => 'policy',
@@ -647,6 +667,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'escalation_rules' => [],
             'version' => 1,
         ]);
+        $this->bindQuestionPolicy($orderStatusPolicy, 'ask_order_status');
         $request = ProductQuestionDraftRequest::create([
             'request_id' => '019a-order-status-request',
             'product_question_id' => $question->id,
@@ -710,7 +731,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'synced_at' => now(),
         ]);
         $articles = collect(['ask_size_recommendation', 'request_custom_size'])->map(function (string $intent): KnowledgeArticle {
-            return KnowledgeArticle::create([
+            $article = KnowledgeArticle::create([
                 'key' => 'qa_global_'.$intent,
                 'title' => $intent,
                 'knowledge_type' => 'policy',
@@ -727,6 +748,8 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
                 'escalation_rules' => [],
                 'version' => 1,
             ]);
+
+            return $this->bindQuestionPolicy($article, $intent);
         });
         $request = ProductQuestionDraftRequest::create([
             'request_id' => '019a-petite-size-request',
@@ -923,6 +946,97 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
         $this->assertStringNotContainsString('follow up', $draft->answer_en);
     }
 
+    public function test_individual_consultation_uses_verified_email_without_enabling_public_display_or_bypassing_other_guards(): void
+    {
+        $site = $this->site();
+        $site->update(['customer_service_email' => 'support@dressafford.test']);
+        $question = $this->question($site, 904, 'unanswered');
+        $question->update(['question' => 'Is this dress able to altered?']);
+        $this->candidateWorkflow();
+        $checks = array_fill_keys(['factual_accuracy', 'relevance', 'actionable_guidance', 'natural_tone', 'decision_risks', 'intent_coverage', 'language_equivalence'], true);
+        foreach (['valid', 'wrong_email', 'missing_context', 'private_order', 'essential_evidence', 'specific_alteration', 'unsupported_promise'] as $scenario) {
+            $request = ProductQuestionDraftRequest::create([
+                'request_id' => 'consultation-'.$scenario, 'product_question_id' => $question->id,
+                'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY, 'workflow_version' => '1.2.0',
+                'status' => 'running', 'n8n_execution_id' => 'consultation-'.$scenario, 'started_at' => now(),
+            ]);
+            $email = $scenario === 'wrong_email' ? 'other@example.test' : $site->customer_service_email;
+            $intents = match ($scenario) {
+                'private_order' => ['request_other_customization', 'ask_order_status'],
+                'specific_alteration' => ['request_add_sleeves'],
+                default => ['request_other_customization'],
+            };
+            $answer = 'Please email '.$email.' with the alteration you have in mind and whether it is before ordering or after delivery.';
+            if ($scenario === 'unsupported_promise') {
+                $answer .= ' Our team will check and get back to you.';
+            }
+            $result = app(N8nProductQuestionDraftService::class)->complete($request, [
+                'plan' => ['intents' => $intents, 'customer_language' => 'en'],
+                'facts' => ['site' => ['customer_service_email' => $site->customer_service_email]],
+                'recommended_visible' => true,
+                'review' => [
+                    'approved' => true, 'must_block' => false, 'covered_intents' => $intents,
+                    'final_answer_en' => $answer, 'quality_checks' => $checks,
+                    'decision_plan' => [
+                        'version' => 'customer-decision-v1', 'customer_goal' => 'Discuss an individual alteration',
+                        'service_strategy' => ['public_value' => 'individual_case', 'recommended_visible' => false,
+                            'can_resolve_in_one_reply' => false, 'response_mode' => 'email_handoff',
+                            'reason' => 'The customer has not specified the alteration.', 'contact_email' => $email,
+                            'email_context' => $scenario === 'missing_context' ? [] : ['Requested change', 'Before ordering or after delivery']],
+                        'answer_units' => [['essential_unknowns' => $scenario === 'essential_evidence' ? ['Unverified design capability'] : []]],
+                    ],
+                ],
+            ]);
+            $draft = ProductQuestionDraft::findOrFail($result['draft_id']);
+            $this->assertFalse($draft->recommended_visible, $scenario);
+            $this->assertSame($scenario === 'valid' ? 'generated' : 'blocked', $draft->status, $scenario);
+        }
+    }
+
+    public function test_decision_workflow_preserves_reviewed_prose_and_never_overrides_quality_rejection(): void
+    {
+        $site = $this->site();
+        $question = $this->question($site, 903, 'unanswered');
+        $question->update(['question' => 'Is size 8 in stock?']);
+        $this->candidateWorkflow();
+        $answer = "Yes, size 8 is currently in stock.\n\nYou can choose it from the size options.";
+        $checks = array_fill_keys(['factual_accuracy', 'relevance', 'actionable_guidance', 'natural_tone', 'decision_risks', 'intent_coverage', 'language_equivalence'], true);
+        foreach (['accepted', 'relevance_failed', 'missing_checks', 'review_rejected', 'unknown_evidence', 'unsupported_action'] as $index => $scenario) {
+            $request = ProductQuestionDraftRequest::create([
+                'request_id' => 'decision-quality-'.$index,
+                'product_question_id' => $question->id,
+                'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+                'workflow_version' => '1.2.0',
+                'status' => 'running',
+                'n8n_execution_id' => 'decision-quality-'.$index,
+                'started_at' => now(),
+            ]);
+            $reviewedAnswer = $scenario === 'unsupported_action' ? $answer.' Our team will check and get back to you.' : $answer;
+            $result = app(N8nProductQuestionDraftService::class)->complete($request, [
+                'plan' => ['intents' => ['ask_in_stock'], 'customer_language' => 'en'],
+                'facts' => ['product' => ['stock_specs' => [['size' => '8', 'status' => 'in_stock']]]],
+                'recommended_visible' => true,
+                'review' => [
+                    'approved' => $scenario !== 'review_rejected',
+                    'must_block' => false,
+                    'covered_intents' => ['ask_in_stock'],
+                    'final_answer_en' => $reviewedAnswer,
+                    'quality_checks' => match ($scenario) {
+                        'relevance_failed' => [...$checks, 'relevance' => false],
+                        'missing_checks' => [],
+                        default => $checks,
+                    },
+                    'decision_plan' => ['version' => 'customer-decision-v1', 'customer_goal' => 'Choose a stock size', 'answer_units' => [
+                        ['essential_unknowns' => $scenario === 'unknown_evidence' ? ['Live availability needs verification'] : []],
+                    ]],
+                ],
+            ]);
+            $draft = ProductQuestionDraft::findOrFail($result['draft_id']);
+            $this->assertSame(str_replace("\n\n", '<br><br>', $reviewedAnswer), $draft->answer_en, $scenario);
+            $this->assertSame($scenario === 'accepted' ? 'generated' : 'blocked', $draft->status, $scenario);
+        }
+    }
+
     public function test_v1_2_blocks_a_draft_when_any_planned_intent_is_uncovered(): void
     {
         $site = $this->site();
@@ -976,7 +1090,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
             'question' => 'Can pockets be added and will it arrive in France before June 1?',
             'raw_payload' => ['_replay' => ['fixture' => [
                 'product' => ['attributes' => ['field_silhouette' => ['Mermaid/Trumpet']]],
-                'facts' => ['eta' => ['estimated_arrival_max' => '2026-05-20']],
+                'facts' => ['site' => ['customer_service_email' => null], 'eta' => ['estimated_arrival_max' => '2026-05-20']],
             ]]],
         ]);
         CommerceProduct::create([
@@ -1010,6 +1124,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
 
         $this->assertSame(['Mermaid/Trumpet'], data_get($resolved, 'facts.product.attributes.field_silhouette'));
         $this->assertSame('2026-05-20', data_get($resolved, 'facts.eta.estimated_arrival_max'));
+        $this->assertNull(data_get($resolved, 'facts.site.customer_service_email'));
         $this->assertSame('2027-06-01', data_get($resolved, 'plan.event_date'));
         $this->assertContains('product-question-draft-replay-suite', array_column($resolved['sources'], 'source'));
     }
@@ -1036,6 +1151,17 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
                 'allowed_actions' => [],
             ],
         );
+    }
+
+    private function bindQuestionPolicy(KnowledgeArticle $article, string $intent): KnowledgeArticle
+    {
+        $article->bindings()->create([
+            'consumer' => 'product_question',
+            'intent_key' => $intent,
+            'usage' => 'draft',
+        ]);
+
+        return $article;
     }
 
     private function question(CommerceSite $site, int $externalId, string $replyStatus)

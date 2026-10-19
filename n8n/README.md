@@ -147,3 +147,34 @@ docker compose up -d
 ```
 
 `docker compose down` 不删除命名卷。不要运行 `down -v`，除非明确需要删除本地 n8n 数据。
+
+### Draft 模型提供方
+
+本地 Draft 的结构化模型调用可通过 Laravel `.env` 切换：
+
+```dotenv
+DRAFT_AI_PROVIDER=omniroute
+OMNIROUTE_API_URL=http://127.0.0.1:20138/v1
+OMNIROUTE_API_KEY=
+OMNIROUTE_MODEL=codex/gpt-6.1-sol
+```
+
+配置后运行 `php artisan config:clear`。密钥只配置在 Laravel；n8n 继续调用内部 AI 接口。提供方和模型参与 Draft 输入指纹并记录到草稿，不会复用旧模型结果。代理错误不会自动回退其他提供方。恢复 MiniMax 时将 `DRAFT_AI_PROVIDER=minimax`。
+
+本设置作用于使用共享内部结构化补全接口的 n8n 工作流；知识研究等直接使用 MiniMaxClient 的调用保持原配置。OmniRoute 使用 Chat Completions 与 JSON object 输出，仍由现有业务校验和人工审核约束。
+
+Structured completion uses one total provider budget (configured timeout, bounded to
+30–180 seconds), including the single retry for malformed JSON. Transport errors
+are returned immediately without automatic HTTP retries. The internal completion
+endpoint sets a bounded PHP execution limit of provider budget + 20 seconds; Q&A
+AI HTTP nodes wait 240 seconds so Laravel can return a normal timeout error.
+Production PHP-FPM/proxy request limits must also exceed the 200-second endpoint
+budget. This does not change the PHP limit for other endpoints.
+
+### 产品问答的服务策略与质量流程
+
+当前规划、生成、独立审核、邮件承接、展示建议、HTML 排版及验证边界，统一见：
+
+[产品问答 Draft：服务策略、内容质量与排版](../docs/architecture/product-question-draft-workflow.md)。
+
+其中包含 `service_strategy` 契约、891/892/893 所反映的通用原则、后端保护的实际范围，以及本地验证与正式发布门禁的区别。配置和启动步骤仍以本 README 为入口。

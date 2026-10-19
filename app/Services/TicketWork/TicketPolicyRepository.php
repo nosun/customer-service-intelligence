@@ -3,10 +3,13 @@
 namespace App\Services\TicketWork;
 
 use App\Models\KnowledgeArticle;
+use App\Services\Knowledge\KnowledgeResolver;
 use Illuminate\Support\Collection;
 
 class TicketPolicyRepository
 {
+    public function __construct(private readonly KnowledgeResolver $knowledge) {}
+
     /** @param list<string> $intents @return list<string> */
     public function baselineKeys(array $intents): array
     {
@@ -22,17 +25,7 @@ class TicketPolicyRepository
     /** @return Collection<int,KnowledgeArticle> */
     public function available(?string $siteKey): Collection
     {
-        return KnowledgeArticle::query()
-            ->where('status', 'verified')
-            ->where('key', 'not like', 'qa_%')
-            ->where(function ($query) use ($siteKey): void {
-                $query->whereNull('site_key');
-                if ($siteKey !== null && $siteKey !== '') {
-                    $query->orWhere('site_key', $siteKey);
-                }
-            })
-            ->orderBy('key')
-            ->get();
+        return $this->knowledge->available('ticket', $siteKey);
     }
 
     /** @param list<string> $keys @return Collection<int,KnowledgeArticle> */

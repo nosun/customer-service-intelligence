@@ -72,7 +72,7 @@ class TicketDraftReplayRunnerTest extends TestCase
 
     private function policy(string $key): void
     {
-        KnowledgeArticle::query()->create([
+        $article = KnowledgeArticle::query()->create([
             'key' => $key,
             'title' => str_replace('_', ' ', $key),
             'knowledge_type' => 'process',
@@ -89,6 +89,11 @@ class TicketDraftReplayRunnerTest extends TestCase
             'escalation_rules' => [],
             'automation_tier' => 'draft_sensitive',
             'version' => 1,
+        ]);
+        $article->bindings()->create([
+            'consumer' => 'ticket',
+            'intent_key' => '*',
+            'usage' => 'draft',
         ]);
     }
 }

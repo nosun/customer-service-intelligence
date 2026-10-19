@@ -348,7 +348,7 @@ class TicketDraftRuntimeWorkflowTest extends TestCase
 
     private function policy(string $key, string $status): KnowledgeArticle
     {
-        return KnowledgeArticle::create([
+        $article = KnowledgeArticle::create([
             'key' => $key,
             'title' => str_replace('_', ' ', $key),
             'knowledge_type' => 'process',
@@ -366,6 +366,13 @@ class TicketDraftRuntimeWorkflowTest extends TestCase
             'automation_tier' => 'draft_sensitive',
             'version' => 1,
         ]);
+        $article->bindings()->create([
+            'consumer' => 'ticket',
+            'intent_key' => '*',
+            'usage' => 'draft',
+        ]);
+
+        return $article;
     }
 
     private function orderResponse(): array

@@ -41,10 +41,23 @@ class ProductQuestionPolicyReviewer
             }
 
             $isGlobal = $scope === 'global';
-            $key = 'qa_'.($isGlobal ? 'global' : $candidate->site->site_key).'_'.$candidate->scenario_key;
-            $existingArticle = KnowledgeArticle::where('key', $key)->first();
+            $key = $isGlobal
+                ? $candidate->scenario_key
+                : $candidate->site->site_key.'_'.$candidate->scenario_key;
+            $existingArticle = KnowledgeArticle::query()
+                ->where(fn ($query) => $query->whereNull('site_key')->when(
+                    ! $isGlobal,
+                    fn ($siteQuery) => $siteQuery->orWhere('site_key', $candidate->site->site_key),
+                ))
+                ->whereHas('bindings', fn ($query) => $query
+                    ->where('consumer', 'product_question')
+                    ->where('intent_key', $candidate->scenario_key))
+                ->when($isGlobal, fn ($query) => $query->whereNull('site_key'))
+                ->when(! $isGlobal, fn ($query) => $query->where('site_key', $candidate->site->site_key))
+                ->first()
+                ?? KnowledgeArticle::where('key', $key)->first();
             $article = KnowledgeArticle::updateOrCreate(
-                ['key' => $key],
+                ['key' => $existingArticle?->key ?? $key],
                 [
                     'title' => $candidate->title,
                     'knowledge_type' => 'policy',
@@ -78,6 +91,14 @@ class ProductQuestionPolicyReviewer
                     'updated_at' => now(),
                 ]);
             }
+            $article->bindings()->updateOrCreate(
+                [
+                    'consumer' => 'product_question',
+                    'intent_key' => $candidate->scenario_key,
+                    'usage' => 'draft',
+                ],
+                ['priority' => 100, 'enabled' => true],
+            );
             $candidate->update(['knowledge_article_id' => $article->id]);
         });
     }

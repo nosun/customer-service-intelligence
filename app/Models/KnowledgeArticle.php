@@ -27,6 +27,11 @@ class KnowledgeArticle extends Model
         return $this->hasMany(KnowledgeArticleVersion::class);
     }
 
+    public function bindings(): HasMany
+    {
+        return $this->hasMany(KnowledgeArticleBinding::class);
+    }
+
     protected function casts(): array
     {
         return [

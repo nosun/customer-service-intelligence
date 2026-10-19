@@ -8,6 +8,31 @@ use Tests\TestCase;
 
 class ProductQuestionDraftPlanGuardTest extends TestCase
 {
+    public function test_general_color_browsing_is_not_an_independent_photo_request(): void
+    {
+        $guard = app(ProductQuestionDraftPlanGuard::class);
+        $this->assertSame(['ask_available_colors'], $guard->normalizeIntents(
+            'is it possible to see a dress in different colors',
+            ['ask_color_photos'],
+        ));
+        $this->assertSame(['ask_available_colors'], $guard->normalizeIntents(
+            'is it possible to see a dress in different colors',
+            ['ask_product_photos'],
+        ));
+        $this->assertContains('ask_color_photos', $guard->normalizeIntents(
+            'Can I see photos of this dress in other colors?',
+            ['ask_color_photos'],
+        ));
+        $this->assertContains('ask_product_photos', $guard->normalizeIntents(
+            'Can I see an actual photo of an older version in other colors?',
+            ['ask_product_photos'],
+        ));
+        $this->assertContains('ask_shipping_options', $guard->normalizeIntents(
+            'Can I see this in other colors and how much is shipping?',
+            ['ask_color_photos', 'ask_shipping_options'],
+        ));
+    }
+
     #[DataProvider('intentCases')]
     public function test_it_recovers_high_value_intents_and_removes_known_misclassifications(
         string $question,
@@ -24,6 +49,7 @@ class ProductQuestionDraftPlanGuardTest extends TestCase
     public static function intentCases(): array
     {
         return [
+            'chart does not erase recommendation request' => ['What size do you recommend? Your size chart differs from my usual brand.', ['ask_size_recommendation'], ['ask_size_recommendation', 'ask_size_chart']],
             'built in bra' => ['Does it have a built-in bra?', [], ['ask_built_in_bra']],
             'closure' => ['Is the back a zipper or lace-up?', [], ['ask_closure']],
             'fit' => ['Does this style run small?', ['ask_size_recommendation'], ['ask_fit']],

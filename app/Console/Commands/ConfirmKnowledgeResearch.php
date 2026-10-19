@@ -105,6 +105,10 @@ class ConfirmKnowledgeResearch extends Command
                         if ($article === null) {
                             throw new RuntimeException("没有 verified 知识：{$answer['existing_article_key']}");
                         }
+                        $article->bindings()->updateOrCreate(
+                            ['consumer' => 'ticket', 'intent_key' => '*', 'usage' => 'draft'],
+                            ['priority' => 100, 'enabled' => true],
+                        );
                         $published[] = $article->key;
 
                         continue;
@@ -122,6 +126,10 @@ class ConfirmKnowledgeResearch extends Command
                         'reviewed_by' => $reviewedBy,
                         'reviewed_at' => now(),
                     ]);
+                    $article->bindings()->updateOrCreate(
+                        ['consumer' => 'ticket', 'intent_key' => '*', 'usage' => 'draft'],
+                        ['priority' => 100, 'enabled' => true],
+                    );
                     $published[] = $article->key;
                 }
 

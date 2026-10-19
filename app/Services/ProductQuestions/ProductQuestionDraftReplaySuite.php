@@ -22,7 +22,13 @@ class ProductQuestionDraftReplaySuite
         }
 
         return collect($cases)->map(function (array $case) use ($defaultFixture): array {
-            $case['fixture'] = array_replace_recursive($defaultFixture, (array) ($case['fixture'] ?? []));
+            $overrides = (array) ($case['fixture'] ?? []);
+            $case['fixture'] = array_replace_recursive($defaultFixture, $overrides);
+            foreach ((array) ($overrides['product'] ?? []) as $key => $value) {
+                if (is_array($value) && (array_is_list($value) || $key === 'size_chart')) {
+                    $case['fixture']['product'][$key] = $value;
+                }
+            }
 
             return $case;
         })->values()->all();
@@ -43,6 +49,10 @@ class ProductQuestionDraftReplaySuite
         $factErrors = 0;
         $policyViolations = 0;
         $qualityReviewed = 0;
+        $decisionQualityReviewed = 0;
+        $relevant = 0;
+        $helpful = 0;
+        $naturalTone = 0;
         $workflowFailures = 0;
         $productIdentityRepetitions = 0;
         $unsupportedFollowUpActions = 0;
@@ -84,6 +94,12 @@ class ProductQuestionDraftReplaySuite
             $factErrors += is_numeric($factReview) ? (int) $factReview : 0;
             $policyViolations += is_numeric($policyReview) ? (int) $policyReview : 0;
             $qualityReviewed += is_numeric($factReview) && is_numeric($policyReview) ? 1 : 0;
+            if (is_bool($prediction['relevance_ok'] ?? null) && is_bool($prediction['guidance_ok'] ?? null) && is_bool($prediction['tone_ok'] ?? null)) {
+                $decisionQualityReviewed++;
+                $relevant += $prediction['relevance_ok'] ? 1 : 0;
+                $helpful += $prediction['guidance_ok'] ? 1 : 0;
+                $naturalTone += $prediction['tone_ok'] ? 1 : 0;
+            }
             $accepted += (bool) ($prediction['accepted_as_is'] ?? false) ? 1 : 0;
             $cost += (float) ($prediction['cost'] ?? 0);
             if (is_numeric($prediction['duration_ms'] ?? null)) {
@@ -98,6 +114,10 @@ class ProductQuestionDraftReplaySuite
             'evaluated' => $evaluated,
             'prediction_coverage' => $this->rate($evaluated, $cases->count()),
             'quality_review_coverage' => $this->rate($qualityReviewed, $evaluated),
+            'decision_quality_review_coverage' => $this->rate($decisionQualityReviewed, $evaluated),
+            'relevance_pass_rate' => $this->rate($relevant, $decisionQualityReviewed),
+            'guidance_pass_rate' => $this->rate($helpful, $decisionQualityReviewed),
+            'natural_tone_pass_rate' => $this->rate($naturalTone, $decisionQualityReviewed),
             'workflow_failure_rate' => $this->rate($workflowFailures, $evaluated),
             'product_identity_repetition_rate' => $this->rate($productIdentityRepetitions, $evaluated),
             'unsupported_follow_up_action_rate' => $this->rate($unsupportedFollowUpActions, $evaluated),

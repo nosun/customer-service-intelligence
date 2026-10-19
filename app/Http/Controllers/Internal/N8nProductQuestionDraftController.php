@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Internal;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductQuestionDraftRequest;
-use App\Services\AI\MiniMaxClient;
+use App\Services\AI\DraftCompletionClient;
 use App\Services\ProductQuestions\N8nProductQuestionDraftService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -90,13 +90,16 @@ class N8nProductQuestionDraftController extends Controller
         return response()->json(['status' => 'failed']);
     }
 
-    public function completion(Request $request, MiniMaxClient $client): JsonResponse
+    public function completion(Request $request, DraftCompletionClient $client): JsonResponse
     {
-        abort_unless($client->isConfigured(), 503, 'MiniMax is not configured.');
+        abort_unless($client->isConfigured(), 503, 'Draft AI provider is not configured.');
         $input = $request->validate([
             'system_prompt' => ['required', 'string', 'max:50000'],
             'user_prompt' => ['required', 'string', 'max:200000'],
         ]);
+
+        // Keep PHP alive until the bounded provider request can return or fail normally.
+        set_time_limit($client->executionTimeout());
 
         return response()->json($client->structuredCompletion($input['system_prompt'], $input['user_prompt']));
     }

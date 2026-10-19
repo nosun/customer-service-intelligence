@@ -17,6 +17,12 @@ class ProductQuestionDraftPlanGuard
      */
     public function normalizeIntents(string $question, array $intents): array
     {
+        if (preg_match('/\b(?:see|view|show)\b.{0,80}\b(?:different|other|available)\s+colou?rs?\b/i', $question) === 1
+            && preg_match('/\b(?:photos?|pictures?|images?|actual|real|historical|older|previous)\b/i', $question) !== 1
+        ) {
+            $intents = array_values(array_diff($intents, ['ask_color_photos', 'ask_product_photos']));
+            $intents[] = 'ask_available_colors';
+        }
         foreach ($this->intentRules() as $rule) {
             if (preg_match($rule['pattern'], $question) !== 1) {
                 continue;
@@ -106,7 +112,7 @@ class ProductQuestionDraftPlanGuard
             ['pattern' => '/\b(?:red|green|blue|black|white|ivory|champagne|pink|purple|burgundy|navy|teal|gold|silver)\b.{0,25}\bavailable\b/i', 'add' => ['ask_available_colors'], 'remove' => ['request_custom_color']],
             ['pattern' => '/\b(?:fabric|material)\b/i', 'add' => ['ask_fabric'], 'remove' => ['ask_guarantee']],
             ['pattern' => '/\bfabric swatch\b|\bswatch\b/i', 'add' => ['ask_swatch'], 'remove' => ['ask_fabric']],
-            ['pattern' => '/\bsize chart\b/i', 'add' => ['ask_size_chart'], 'remove' => ['ask_size_recommendation']],
+            ['pattern' => '/\bsize chart\b/i', 'add' => ['ask_size_chart']],
             ['pattern' => '/\b(?:run|runs)\s+(?:small|large)|\btrue to size\b/i', 'add' => ['ask_fit'], 'remove' => ['ask_size_recommendation']],
             ['pattern' => '/\b(?:US\s*)?\d{1,2}W\b/i', 'add' => ['ask_plus_size'], 'remove' => ['ask_in_stock', 'ask_size_recommendation']],
             ['pattern' => '/\b(?:shorten|remove)\b.{0,30}\btrain\b|\btrain\b.{0,30}\b(?:shorten|remove)\b/i', 'add' => ['request_remove_train'], 'remove' => ['request_custom_length']],

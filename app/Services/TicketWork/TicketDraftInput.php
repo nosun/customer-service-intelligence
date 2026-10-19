@@ -4,11 +4,14 @@ namespace App\Services\TicketWork;
 
 use App\Models\Conversation;
 use App\Models\ConversationEvent;
-use App\Models\KnowledgeArticle;
+use App\Services\Knowledge\KnowledgeResolver;
 
 class TicketDraftInput
 {
-    public function __construct(private readonly TicketRuntimeContext $context) {}
+    public function __construct(
+        private readonly TicketRuntimeContext $context,
+        private readonly KnowledgeResolver $knowledge,
+    ) {}
 
     /** @return array{hash:string,snapshot:array<string,mixed>,trigger:ConversationEvent} */
     public function capture(
@@ -20,16 +23,12 @@ class TicketDraftInput
     ): array {
         $trigger ??= $this->context->triggerEvent($conversation);
         $events = $this->context->stageEvents($conversation, $trigger);
-        $policyFingerprint = KnowledgeArticle::query()
-            ->where('status', 'verified')
-            ->where('key', 'not like', 'qa_%')
-            ->where(fn ($query) => $query->whereNull('site_key')->orWhere('site_key', $conversation->site_key))
-            ->orderBy('id')
-            ->get(['id', 'version', 'updated_at'])
-            ->map(fn (KnowledgeArticle $article): array => [
+        $policyFingerprint = $this->knowledge->available('ticket', $conversation->site_key)
+            ->map(fn ($article): array => [
                 'id' => $article->id,
                 'version' => $article->version,
                 'updated_at' => $article->updated_at?->toIso8601String(),
+                'intents' => $article->bindings->pluck('intent_key')->values()->all(),
             ])->all();
         $snapshot = [
             'conversation_id' => $conversation->id,

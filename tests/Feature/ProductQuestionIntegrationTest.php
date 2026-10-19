@@ -193,6 +193,9 @@ class ProductQuestionIntegrationTest extends TestCase
         $this->get("/admin/product-questions/120?site_id={$site->id}")
             ->assertOk()
             ->assertSee('确认回复差异')
+            ->assertSee('id="qa-answer-source"', false)
+            ->assertSee('id="qa-answer-preview"', false)
+            ->assertSee('<div class="qa-content">Ships in 48 hours.</div>', false)
             ->assertSee('Ships in 48 hours.')
             ->assertSee('will_queue');
 

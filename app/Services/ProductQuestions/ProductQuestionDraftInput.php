@@ -3,11 +3,14 @@
 namespace App\Services\ProductQuestions;
 
 use App\Models\CommerceProduct;
-use App\Models\KnowledgeArticle;
 use App\Models\ProductQuestion;
+use App\Services\AI\DraftCompletionClient;
+use App\Services\Knowledge\KnowledgeResolver;
 
 class ProductQuestionDraftInput
 {
+    public function __construct(private readonly KnowledgeResolver $knowledge) {}
+
     /** @return array{hash:string,snapshot:array<string,mixed>} */
     public function capture(
         ProductQuestion $question,
@@ -21,19 +24,13 @@ class ProductQuestionDraftInput
             ->where('sn', $question->sn)
             ->first();
         $siteKey = $question->site->site_key;
-        $policies = KnowledgeArticle::query()
-            ->where('status', 'verified')
-            ->where(function ($query) use ($siteKey): void {
-                $query->where('key', 'like', 'qa_global_%')
-                    ->orWhere('key', 'like', 'qa_'.$siteKey.'_%');
-            })
-            ->orderBy('key')
-            ->get(['id', 'key', 'version', 'updated_at'])
-            ->map(fn (KnowledgeArticle $article): array => [
+        $policies = $this->knowledge->available('product_question', $siteKey)
+            ->map(fn ($article): array => [
                 'id' => $article->id,
                 'key' => $article->key,
                 'version' => $article->version,
                 'updated_at' => $article->updated_at?->toIso8601String(),
+                'intents' => $this->knowledge->intentKeys($article),
             ])->all();
 
         $snapshot = [
@@ -72,8 +69,9 @@ class ProductQuestionDraftInput
                 'key' => $workflowKey,
                 'version' => $workflowVersion,
                 'prompt_version' => $promptVersion,
-                'provider' => 'minimax',
-                'model' => (string) config('services.minimax.model'),
+                'reply_style_version' => N8nProductQuestionDraftService::REPLY_STYLE_VERSION,
+                'provider' => app(DraftCompletionClient::class)->provider(),
+                'model' => app(DraftCompletionClient::class)->model(),
             ],
         ];
 

@@ -25,6 +25,18 @@ return [
         'timeout' => (int) env('CONSOLE_NEW_API_TIMEOUT', 15),
     ],
 
+    'draft_ai' => [
+        'provider' => env('DRAFT_AI_PROVIDER', 'minimax'),
+    ],
+
+    'omniroute' => [
+        'api_key' => env('OMNIROUTE_API_KEY'),
+        'base_url' => env('OMNIROUTE_API_URL', 'http://127.0.0.1:20138/v1'),
+        'model' => env('OMNIROUTE_MODEL', 'codex/gpt-6.1-sol'),
+        'timeout' => (int) env('OMNIROUTE_TIMEOUT', 180),
+        'max_completion_tokens' => (int) env('OMNIROUTE_MAX_COMPLETION_TOKENS', 12000),
+    ],
+
     'minimax' => [
         'api_key' => env('MINIMAX_API_KEY'),
         'base_url' => env('MINIMAX_API_URL', 'https://api.minimax.io/v1'),
