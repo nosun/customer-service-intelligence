@@ -43,100 +43,103 @@ class ProductQuestionDraftReplayRunner
         $runId = (string) Str::uuid();
         $predictions = [];
 
-        foreach (array_chunk($cases, max(1, $batchSize)) as $batch) {
-            $requests = [];
-            foreach ($batch as $case) {
-                $question = $this->question($site, $product, $case, $runId);
-                $snapshot = $this->input->capture(
-                    $question,
-                    $workflowKey,
-                    $workflowVersion,
-                    $workflow->prompt_version ?: N8nProductQuestionDraftService::PROMPT_VERSION,
-                );
-                $request = ProductQuestionDraftRequest::create([
-                    'request_id' => (string) Str::uuid(),
-                    'product_question_id' => $question->id,
-                    'workflow_key' => $workflowKey,
-                    'workflow_version' => $workflowVersion,
-                    'input_hash' => $snapshot['hash'],
-                    'input_snapshot' => $snapshot['snapshot'],
-                    'force_regeneration' => true,
-                    'status' => 'queued',
-                ]);
-                try {
-                    $this->n8n->trigger($request);
-                } catch (Throwable $exception) {
-                    $request->update([
-                        'status' => 'failed',
-                        'error_message' => mb_substr($exception->getMessage(), 0, 5000),
-                        'finished_at' => now(),
+        try {
+            foreach (array_chunk($cases, max(1, $batchSize)) as $batch) {
+                $requests = [];
+                foreach ($batch as $case) {
+                    $question = $this->question($site, $product, $case, $runId);
+                    $snapshot = $this->input->capture(
+                        $question,
+                        $workflowKey,
+                        $workflowVersion,
+                        $workflow->prompt_version ?: N8nProductQuestionDraftService::PROMPT_VERSION,
+                    );
+                    $request = ProductQuestionDraftRequest::create([
+                        'request_id' => (string) Str::uuid(),
+                        'product_question_id' => $question->id,
+                        'workflow_key' => $workflowKey,
+                        'workflow_version' => $workflowVersion,
+                        'input_hash' => $snapshot['hash'],
+                        'input_snapshot' => $snapshot['snapshot'],
+                        'force_regeneration' => true,
+                        'status' => 'queued',
                     ]);
+                    try {
+                        $this->n8n->trigger($request);
+                    } catch (Throwable $exception) {
+                        $request->update([
+                            'status' => 'failed',
+                            'error_message' => mb_substr($exception->getMessage(), 0, 5000),
+                            'finished_at' => now(),
+                        ]);
+                    }
+                    $requests[(string) $case['id']] = $request;
+                    if ($progress !== null) {
+                        $progress("triggered={$case['id']} request={$request->request_id}");
+                    }
                 }
-                $requests[(string) $case['id']] = $request;
-                if ($progress !== null) {
-                    $progress("triggered={$case['id']} request={$request->request_id}");
+
+                $deadline = microtime(true) + max(1, $timeoutSeconds);
+                do {
+                    $pending = 0;
+                    foreach ($requests as $request) {
+                        $request->refresh();
+                        $pending += in_array($request->status, ['queued', 'running'], true) ? 1 : 0;
+                    }
+                    if ($pending === 0) {
+                        break;
+                    }
+                    usleep(max(10, $pollMilliseconds) * 1000);
+                } while (microtime(true) < $deadline);
+
+                foreach ($requests as $caseId => $request) {
+                    $request->refresh()->load('draft');
+                    $timedOut = in_array($request->status, ['queued', 'running'], true);
+                    if ($timedOut) {
+                        $request->update([
+                            'status' => 'failed',
+                            'error_message' => 'Draft replay runner timed out waiting for n8n.',
+                            'finished_at' => now(),
+                        ]);
+                        $request->refresh();
+                    }
+                    $draft = $request->draft;
+                    $prediction = [
+                        'id' => $caseId,
+                        'status' => $timedOut ? 'timed_out' : ($draft?->status ?? $request->status),
+                        'intents' => $draft?->intents ?? [],
+                        'answer_en' => $draft?->answer_en,
+                        'answer_localized' => $draft?->answer_localized,
+                        'knowledge_article_ids' => $draft?->knowledge_article_ids ?? [],
+                        'facts' => $draft?->facts ?? [],
+                        'fact_sources' => $draft?->fact_sources ?? [],
+                        'missing_facts' => $draft?->missing_facts ?? [],
+                        'safety_flags' => $draft?->safety_flags ?? [],
+                        'recommended_visible' => $draft?->recommended_visible,
+                        'duration_ms' => $this->duration($request),
+                        'cost' => data_get($draft?->usage, 'cost', 0),
+                        'usage' => $draft?->usage,
+                        'request_id' => $request->request_id,
+                        'execution_id' => $request->n8n_execution_id,
+                        'draft_id' => $request->product_question_draft_id,
+                        'error_message' => $request->error_message,
+                    ];
+                    $predictions[] = $prediction;
+                    $request->question()->update(['remote_present' => false]);
+                    if ($progress !== null) {
+                        $progress("completed={$caseId} status={$prediction['status']}");
+                    }
                 }
             }
-
-            $deadline = microtime(true) + max(1, $timeoutSeconds);
-            do {
-                $pending = 0;
-                foreach ($requests as $request) {
-                    $request->refresh();
-                    $pending += in_array($request->status, ['queued', 'running'], true) ? 1 : 0;
-                }
-                if ($pending === 0) {
-                    break;
-                }
-                usleep(max(10, $pollMilliseconds) * 1000);
-            } while (microtime(true) < $deadline);
-
-            foreach ($requests as $caseId => $request) {
-                $request->refresh()->load('draft');
-                $timedOut = in_array($request->status, ['queued', 'running'], true);
-                if ($timedOut) {
-                    $request->update([
-                        'status' => 'failed',
-                        'error_message' => 'Draft replay runner timed out waiting for n8n.',
-                        'finished_at' => now(),
-                    ]);
-                    $request->refresh();
-                }
-                $draft = $request->draft;
-                $prediction = [
-                    'id' => $caseId,
-                    'status' => $timedOut ? 'timed_out' : ($draft?->status ?? $request->status),
-                    'intents' => $draft?->intents ?? [],
-                    'answer_en' => $draft?->answer_en,
-                    'answer_localized' => $draft?->answer_localized,
-                    'knowledge_article_ids' => $draft?->knowledge_article_ids ?? [],
-                    'facts' => $draft?->facts ?? [],
-                    'fact_sources' => $draft?->fact_sources ?? [],
-                    'missing_facts' => $draft?->missing_facts ?? [],
-                    'safety_flags' => $draft?->safety_flags ?? [],
-                    'recommended_visible' => $draft?->recommended_visible,
-                    'duration_ms' => $this->duration($request),
-                    'cost' => data_get($draft?->usage, 'cost', 0),
-                    'usage' => $draft?->usage,
-                    'request_id' => $request->request_id,
-                    'execution_id' => $request->n8n_execution_id,
-                    'draft_id' => $request->product_question_draft_id,
-                    'error_message' => $request->error_message,
-                ];
-                $predictions[] = $prediction;
-                $request->question()->update(['remote_present' => false]);
-                if ($progress !== null) {
-                    $progress("completed={$caseId} status={$prediction['status']}");
-                }
-            }
-        }
-
-        if ($cleanup) {
-            ProductQuestion::query()
+        } finally {
+            $questions = ProductQuestion::query()
                 ->where('commerce_site_id', $site->id)
                 ->where('name', '__CSI_N8N_REPLAY__')
-                ->where('email', $runId.'@replay.invalid')
-                ->delete();
+                ->where('email', $runId.'@replay.invalid');
+            $questions->update(['remote_present' => false]);
+            if ($cleanup) {
+                $questions->delete();
+            }
         }
 
         return $predictions;

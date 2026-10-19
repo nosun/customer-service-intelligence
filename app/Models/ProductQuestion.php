@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class ProductQuestion extends Model
 {
     protected $guarded = [];
+
+    public function scopeWithoutReplay(Builder $query): Builder
+    {
+        return $query->where('name', '!=', '__CSI_N8N_REPLAY__');
+    }
 
     public function site(): BelongsTo
     {

@@ -86,4 +86,52 @@ class ProductQuestionDraftReplayRunnerTest extends TestCase
         $this->assertSame(['execution-pq-001', 'execution-pq-049'], array_column($predictions, 'execution_id'));
         $this->assertSame(0, ProductQuestion::count());
     }
+
+    public function test_interrupted_replay_is_hidden_and_retains_audit_records(): void
+    {
+        $site = CommerceSite::create([
+            'name' => 'Replay Site', 'site_key' => 'replay-site',
+            'admin_api_url' => 'https://replay.test/api/admin', 'api_token' => 'secret', 'enabled' => true,
+        ]);
+        $product = CommerceProduct::create([
+            'commerce_site_id' => $site->id, 'sn' => 'REPLAY-1', 'name' => 'Replay Dress',
+            'product' => ['sn' => 'REPLAY-1', 'name' => 'Replay Dress', 'type' => 'dress'],
+            'product_detail' => ['attributes' => ['field_silhouette' => ['A-Line']]],
+            'images' => [], 'options' => [], 'payload_hash' => str_repeat('a', 64),
+            'sync_status' => 'completed', 'synced_at' => now(),
+        ]);
+        AiWorkflow::create([
+            'workflow_key' => N8nProductQuestionDraftService::WORKFLOW_KEY,
+            'workflow_version' => '1.2.0',
+            'status' => 'evaluating',
+            'prompt_version' => 'test-prompt-v4',
+            'allowed_fact_keys' => [],
+            'allowed_actions' => [],
+        ]);
+        $this->mock(N8nDraftWorkflowClient::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('isConfigured')->once()->andReturnTrue();
+            $mock->shouldReceive('trigger')->once()->andReturnNull();
+        });
+
+        try {
+            app(ProductQuestionDraftReplayRunner::class)->run(
+                $site,
+                $product,
+                [['id' => 'pq-001', 'question' => 'Does it have pockets?']],
+                N8nProductQuestionDraftService::WORKFLOW_KEY,
+                '1.2.0',
+                progress: function (): void {
+                    $this->assertSame(0, ProductQuestion::withoutReplay()->count());
+                    throw new \RuntimeException('Interrupted replay');
+                },
+            );
+            $this->fail('Expected interruption.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Interrupted replay', $exception->getMessage());
+        }
+
+        $question = ProductQuestion::firstOrFail();
+        $this->assertFalse($question->remote_present);
+        $this->assertSame(1, $question->draftRequests()->count());
+    }
 }

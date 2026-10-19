@@ -679,6 +679,32 @@ class ProductQuestionIntegrationTest extends TestCase
         $this->assertDatabaseHas(config('admin.database.menu_table'), ['title' => '站点配置', 'uri' => 'commerce-sites']);
     }
 
+    public function test_replay_questions_are_excluded_from_business_list_and_counts(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $site = $this->site();
+        foreach (['', '__CSI_N8N_REPLAY__'] as $index => $name) {
+            ProductQuestion::create([
+                'commerce_site_id' => $site->id,
+                'external_id' => 120 + $index,
+                'synced_at' => now(),
+                'raw_payload' => [],
+                'sn' => 'QA100',
+                'name' => $name,
+                'question' => $index === 0 ? 'Real customer question' : 'Leaked replay question',
+                'remote_present' => true,
+                'reply_status' => 'unanswered',
+            ]);
+        }
+
+        $this->get('/admin/product-questions?site_id='.$site->id)
+            ->assertOk()
+            ->assertSee('Real customer question')
+            ->assertDontSee('Leaked replay question')
+            ->assertSee('<strong>1</strong><span>当前问答</span>', false)
+            ->assertSee('<strong>1</strong><span>待回复</span>', false);
+    }
+
     private function administrator(): Administrator
     {
         $administrator = Administrator::create([

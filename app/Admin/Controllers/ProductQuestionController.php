@@ -34,7 +34,7 @@ class ProductQuestionController extends Controller
     {
         $sites = CommerceSite::query()->where('enabled', true)->orderBy('name')->get();
         $site = $this->selectedSite($request, $sites);
-        $query = ProductQuestion::query()->with('analysis')->where('remote_present', true);
+        $query = ProductQuestion::query()->withoutReplay()->with('analysis')->where('remote_present', true);
         $site ? $query->where('commerce_site_id', $site->id) : $query->whereRaw('1 = 0');
         $this->applyFilters($query, $request);
         $questions = $query->orderByDesc('external_id')->paginate(50)->withQueryString();
@@ -446,7 +446,7 @@ class ProductQuestionController extends Controller
     /** @return array<string, int> */
     private function counts(CommerceSite $site): array
     {
-        $query = ProductQuestion::query()
+        $query = ProductQuestion::query()->withoutReplay()
             ->where('commerce_site_id', $site->id)
             ->where('remote_present', true);
 
