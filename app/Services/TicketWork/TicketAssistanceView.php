@@ -4,6 +4,7 @@ namespace App\Services\TicketWork;
 
 use App\Models\Conversation;
 use App\Models\WorkItem;
+use App\Services\Agents\TicketAgentWorkflow;
 use Throwable;
 
 /** A presentation of persisted, reviewed workflow output; never invents new conclusions. */
@@ -11,8 +12,8 @@ class TicketAssistanceView
 {
     public function current(Conversation $ticket, WorkItem $item): bool
     {
-        if ($item->workflow_key === \App\Services\Agents\TicketAgentWorkflow::KEY) {
-            return app(\App\Services\Agents\TicketAgentWorkflow::class)->current($ticket, $item);
+        if ($item->workflow_key === TicketAgentWorkflow::KEY) {
+            return app(TicketAgentWorkflow::class)->current($ticket, $item);
         }
         try {
             $input = app(TicketDraftInput::class)->capture($ticket, (int) data_get($item->input_snapshot, 'requested_by'), $item->workflow_key, $item->workflow_version);

@@ -162,7 +162,7 @@ class TicketAgentWorkflowTest extends TestCase
 
     public function test_new_attachment_content_guidance_policy_and_identity_invalidate_current_results(): void
     {
-        foreach (['attachment', 'guidance', 'policy', 'identity', 'body'] as $change) {
+        foreach (['attachment', 'guidance', 'policy', 'identity', 'body', 'runtime'] as $change) {
             [$ticket] = $this->ticket();
             $tools = new TicketAgentTools($ticket);
             match ($change) {
@@ -171,6 +171,7 @@ class TicketAgentWorkflowTest extends TestCase
                 'policy' => KnowledgeArticle::where('key', 'agent_return')->increment('version'),
                 'identity' => $ticket->update(['requester_email' => 'changed@example.test']),
                 'body' => $ticket->events()->first()->update(['body_text' => 'Changed without content hash update']),
+                'runtime' => config(['services.minimax.model' => uniqid('changed-model-')]),
             };
             try {
                 $tools->assertCurrent();
@@ -264,6 +265,100 @@ class TicketAgentWorkflowTest extends TestCase
         $this->assertFalse($facts->has('order.currency'));
     }
 
+    public function test_runtime_changes_do_not_reuse_or_execute_old_tasks(): void
+    {
+        [$ticket, $actor] = $this->ticket();
+        $workflow = app(TicketAgentWorkflow::class);
+        $original = $this->task($ticket, $actor);
+        $other = $workflow->create($ticket, $actor->id, 'minimax');
+        $this->assertNotSame($original->id, $other->id);
+        config(['services.omniroute.model' => 'changed-model']);
+        $replacement = $this->task($ticket, $actor);
+        $this->assertNotSame($original->id, $replacement->id);
+        $this->assertFalse($workflow->current($ticket, $original));
+        $this->mock(TicketAgentWorker::class)->shouldNotReceive('run');
+        $this->assertSame('stale', $workflow->run($original)->status);
+        $replacement->update(['workflow_version' => 'old-version']);
+        $this->assertFalse($workflow->current($ticket, $replacement));
+        $this->assertNotSame($replacement->id, $this->task($ticket, $actor)->id);
+    }
+
+    public function test_changed_prompt_manifest_or_missing_runtime_invalidates_a_queued_task(): void
+    {
+        [$ticket, $actor] = $this->ticket();
+        foreach (['prompt', 'missing'] as $change) {
+            $item = $this->task($ticket, $actor);
+            $snapshot = $item->input_snapshot;
+            if ($change === 'prompt') {
+                $snapshot['runtime']['sources']['src/assistant.mjs'] = 'old-prompt-hash';
+            } else {
+                unset($snapshot['runtime']);
+            }
+            $item->update(['input_snapshot' => $snapshot]);
+            $this->assertFalse(app(TicketAgentWorkflow::class)->current($ticket, $item));
+            $this->mock(TicketAgentWorker::class)->shouldNotReceive('run');
+            $this->assertSame('stale', app(TicketAgentWorkflow::class)->run($item)->status);
+        }
+    }
+
+    public function test_reaped_task_rejects_late_checkpoints_tools_and_results(): void
+    {
+        [$ticket, $actor] = $this->ticket();
+        $item = $this->task($ticket, $actor);
+        $this->mock(TicketAgentWorker::class)->shouldReceive('run')->once()->andReturnUsing(function ($initial, $provider, $invoke, $progress) use ($item) {
+            WorkItem::whereKey($item->id)->update(['deadline_at' => now()->subSecond()]);
+            $this->artisan('tickets:reap-draft-work-items')->assertSuccessful();
+            $progress(['stage' => 'late']);
+            $invoke('read_conversation', []);
+
+            return [];
+        });
+        try {
+            app(TicketAgentWorkflow::class)->run($item);
+            $this->fail('A late worker must stop.');
+        } catch (RuntimeException) {
+            $this->assertSame('failed', $item->fresh()->status);
+            $this->assertStringContainsString('deadline', $item->fresh()->error_message);
+            $this->assertEmpty($item->fresh()->result);
+            $this->assertDatabaseCount('conversation_drafts', 0);
+        }
+    }
+
+    public function test_a_late_final_report_cannot_save_a_draft_or_replace_reaper_failure(): void
+    {
+        [$ticket, $actor] = $this->ticket();
+        $this->fakeWorker('reaped_before_result');
+        $item = $this->task($ticket, $actor);
+        try {
+            app(TicketAgentWorkflow::class)->run($item);
+            $this->fail('A reaped task cannot save a late draft.');
+        } catch (RuntimeException) {
+            $this->assertSame('failed', $item->fresh()->status);
+            $this->assertStringContainsString('deadline', $item->fresh()->error_message);
+            $this->assertArrayHasKey('runtime', $item->fresh()->result);
+            $this->assertArrayNotHasKey('failed_report', $item->fresh()->result);
+            $this->assertDatabaseCount('conversation_drafts', 0);
+        }
+    }
+
+    public function test_feedback_rerun_keeps_sdk_and_original_provider(): void
+    {
+        [$ticket, $actor] = $this->ticket();
+        $original = $this->task($ticket, $actor);
+        $original->update(['status' => 'completed']);
+        config(['services.draft_ai.provider' => 'minimax']);
+        $this->actingAs($actor, 'admin')->post('/admin/conversations/'.$ticket->id.'/assistance-feedback', [
+            'work_item_id' => $original->id, 'target' => 'analysis', 'kind' => 'correction',
+            'body' => 'Please recheck the receipt evidence.', 'regenerate' => true,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $rerun = WorkItem::latest('id')->first();
+        $this->assertNotSame($original->id, $rerun->id);
+        $this->assertSame(TicketAgentWorkflow::KEY, $rerun->workflow_key);
+        $this->assertSame('omniroute', $rerun->input_snapshot['provider']);
+        Queue::assertPushed(RunTicketAgent::class, fn ($job) => $job->workItemId === $rerun->id && $job->connection === 'background');
+        Http::assertNothingSent();
+    }
+
     private function task(Conversation $ticket, Administrator $actor): WorkItem
     {
         $item = app(TicketAgentWorkflow::class)->create($ticket, $actor->id, 'omniroute');
@@ -330,6 +425,11 @@ class TicketAgentWorkflowTest extends TestCase
             }
             if ($mode === 'changed_decision') {
                 $candidate['case_progress']['next_action'] = 'Changed after independent review';
+            }
+            if ($mode === 'reaped_before_result') {
+                $item = WorkItem::where('status', 'running')->firstOrFail();
+                $item->update(['deadline_at' => now()->subSecond()]);
+                $this->artisan('tickets:reap-draft-work-items')->assertSuccessful();
             }
             if ($mode === 'changed_input') {
                 Conversation::findOrFail((int) substr($initial['case_key'], 7))->update(['draft_guidance' => 'New guidance during run']);

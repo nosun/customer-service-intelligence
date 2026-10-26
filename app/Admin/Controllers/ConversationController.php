@@ -10,6 +10,7 @@ use App\Models\ConversationDraft;
 use App\Models\DecisionCase;
 use App\Models\DecisionNode;
 use App\Models\WorkItem;
+use App\Services\Agents\TicketAgentWorkflow;
 use App\Services\Cancellations\CancellationCaseVerifier;
 use App\Services\N8n\N8nTicketDraftWorkflowClient;
 use App\Services\N8n\WorkflowRegistry;
@@ -330,7 +331,7 @@ class ConversationController extends Controller
     {
         if ($draft->source === 'openai_agents') {
             return $draft->workItem !== null
-                && app(\App\Services\Agents\TicketAgentWorkflow::class)->current($ticket, $draft->workItem);
+                && app(TicketAgentWorkflow::class)->current($ticket, $draft->workItem);
         }
         if (data_get($draft->metadata, 'workflow_key') === N8nTicketDraftService::INVESTIGATION_KEY
             && ($draft->workItem === null || ! $this->workItemCurrent($ticket, $draft->workItem))) {
@@ -352,8 +353,8 @@ class ConversationController extends Controller
 
     private function workItemCurrent(Conversation $ticket, WorkItem $item): bool
     {
-        if ($item->workflow_key === \App\Services\Agents\TicketAgentWorkflow::KEY) {
-            return app(\App\Services\Agents\TicketAgentWorkflow::class)->current($ticket, $item);
+        if ($item->workflow_key === TicketAgentWorkflow::KEY) {
+            return app(TicketAgentWorkflow::class)->current($ticket, $item);
         }
         if ($item->workflow_key !== N8nTicketDraftService::INVESTIGATION_KEY) {
             return true;

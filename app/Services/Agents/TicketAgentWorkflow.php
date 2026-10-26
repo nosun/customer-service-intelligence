@@ -29,9 +29,9 @@ class TicketAgentWorkflow
 
         return DB::transaction(function () use ($ticket, $actor, $provider): WorkItem {
             $ticket = Conversation::lockForUpdate()->findOrFail($ticket->id);
-            $tools = new TicketAgentTools($ticket);
+            $tools = new TicketAgentTools($ticket, $provider);
             $existing = WorkItem::where('workflow_key', self::KEY)->where('input_snapshot->conversation_id', $ticket->id)
-                ->where('input_hash', $tools->hash())->whereIn('status', ['queued', 'running'])->latest('id')->first();
+                ->where('workflow_version', self::VERSION)->where('input_hash', $tools->hash())->whereIn('status', ['queued', 'running'])->where('deadline_at', '>', now())->latest('id')->first();
             if ($existing !== null) {
                 return $existing;
             }
@@ -41,7 +41,7 @@ class TicketAgentWorkflow
             return WorkItem::create([
                 'work_item_key' => (string) Str::uuid(), 'customer_case_id' => $case->id,
                 'work_type' => 'ticket_agent', 'status' => 'queued', 'workflow_key' => self::KEY, 'workflow_version' => self::VERSION,
-                'input_hash' => $tools->hash(), 'input_snapshot' => ['conversation_id' => $ticket->id, 'requested_by' => $actor, 'provider' => $provider],
+                'input_hash' => $tools->hash(), 'input_snapshot' => ['conversation_id' => $ticket->id, 'requested_by' => $actor, 'provider' => $provider, 'runtime' => $tools->runtime()],
                 'max_attempts' => 1, 'deadline_at' => now()->addSeconds((int) config('ticket-agent.timeout') + 120),
             ]);
         });
@@ -54,22 +54,24 @@ class TicketAgentWorkflow
         }
         try {
             $ticket = Conversation::findOrFail(data_get($item->input_snapshot, 'conversation_id'));
-            $tools = new TicketAgentTools($ticket);
-            if (! hash_equals($item->input_hash, $tools->hash()) || $item->deadline_at?->isPast()) {
-                $item->update(['status' => 'stale', 'error_message' => 'Ticket changed or the queued task expired.', 'finished_at' => now()]);
+            $tools = new TicketAgentTools($ticket, (string) data_get($item->input_snapshot, 'provider'));
+            if ($item->workflow_version !== self::VERSION || data_get($item->input_snapshot, 'runtime') !== $tools->runtime() || ! hash_equals($item->input_hash, $tools->hash()) || $item->deadline_at?->isPast()) {
+                WorkItem::whereKey($item->id)->where('status', 'running')->update(['status' => 'stale', 'error_message' => 'Ticket input, policy or Agent runtime changed, or the queued task expired.', 'finished_at' => now()]);
 
                 return $item->fresh();
             }
             $report = app(TicketAgentWorker::class)->run($tools->initial(), data_get($item->input_snapshot, 'provider'), function (string $name, array $arguments) use ($tools, $item): array {
+                $this->assertActive($item);
                 $result = $tools->call($name, $arguments);
-                $item->update(['result' => [...($item->fresh()->result ?? []), 'runtime' => ['plan' => $tools->plan, 'facts' => $tools->facts,
+                WorkItem::whereKey($item->id)->where('status', 'running')->where('deadline_at', '>', now())->update(['result' => [...($item->fresh()->result ?? []), 'runtime' => ['plan' => $tools->plan, 'facts' => $tools->facts,
                     'return_assessment' => $tools->returnAssessment, 'last_tool' => $name, 'tool_calls_completed' => count($tools->ledger), 'evidence' => $tools->ledger]]]);
 
                 return $result;
             }, function (array $checkpoint) use ($item): void {
+                $this->assertActive($item);
                 $result = $item->fresh()->result ?? [];
                 $result['checkpoints'][] = $checkpoint;
-                $item->update(['result' => $result]);
+                WorkItem::whereKey($item->id)->where('status', 'running')->where('deadline_at', '>', now())->update(['result' => $result]);
             });
             $tools->assertCurrent();
             $output = app(TicketAgentOutput::class)->validate($report, $tools);
@@ -139,19 +141,28 @@ class TicketAgentWorkflow
             if ($exception instanceof ValidationException) {
                 $result['validation_errors'] = $exception->errors();
             }
-            $item->update(['status' => 'failed', 'result' => $result, 'error_message' => mb_substr($message, 0, 1000), 'finished_at' => now()]);
+            WorkItem::whereKey($item->id)->where('status', 'running')->update(['status' => 'failed', 'result' => $result, 'error_message' => mb_substr($message, 0, 1000), 'finished_at' => now()]);
             throw $exception;
+        }
+    }
+
+    private function assertActive(WorkItem $item): void
+    {
+        if (! WorkItem::whereKey($item->id)->where('status', 'running')->where('deadline_at', '>', now())->exists()) {
+            throw new RuntimeException('Ticket Agent task is no longer active.');
         }
     }
 
     public function current(Conversation $ticket, WorkItem $item): bool
     {
         try {
-            $tools = new TicketAgentTools($ticket);
+            $tools = new TicketAgentTools($ticket, (string) data_get($item->input_snapshot, 'provider'));
             $tools->facts = $item->result['facts'] ?? [];
             $tools->assertCurrent();
 
-            return hash_equals((string) $item->input_hash, $tools->hash());
+            return $item->workflow_version === self::VERSION
+                && data_get($item->input_snapshot, 'runtime') === $tools->runtime()
+                && hash_equals((string) $item->input_hash, $tools->hash());
         } catch (Throwable) {
             return false;
         }

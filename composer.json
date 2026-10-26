@@ -66,6 +66,13 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "check": [
+            "@test --do-not-cache-result",
+            "npm --prefix agents/ticket-investigator test",
+            "@php artisan tickets:return-flow-check --json",
+            "@php vendor/bin/pint --test",
+            "git diff --check"
         ]
     },
     "extra": {

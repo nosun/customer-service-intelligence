@@ -4,8 +4,10 @@ namespace App\Admin\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\DispatchTicketAssistance;
+use App\Jobs\RunTicketAgent;
 use App\Models\Conversation;
 use App\Models\WorkItem;
+use App\Services\Agents\TicketAgentWorkflow;
 use App\Services\N8n\WorkflowRegistry;
 use App\Services\TicketWork\N8nTicketDraftService;
 use App\Services\TicketWork\TicketAssistanceFeedbackRecorder;
@@ -19,7 +21,7 @@ use Throwable;
 
 class TicketAssistanceController extends Controller
 {
-    public function agent(Request $request, int $id, \App\Services\Agents\TicketAgentWorkflow $workflow): RedirectResponse
+    public function agent(Request $request, int $id, TicketAgentWorkflow $workflow): RedirectResponse
     {
         $ticket = Conversation::findOrFail($id);
         $data = $request->validate(['draft_guidance' => ['nullable', 'string', 'max:10000']]);
@@ -33,7 +35,7 @@ class TicketAssistanceController extends Controller
             }
             $item = $workflow->create($ticket, (int) Admin::user()->id, (string) config('services.draft_ai.provider'));
             if ($item->wasRecentlyCreated) {
-                \App\Jobs\RunTicketAgent::dispatch($item->id)->onConnection('background');
+                RunTicketAgent::dispatch($item->id)->onConnection('background');
             }
             admin_toastr('Agents SDK 已安排调查、拟稿与独立复核，完成后保存本地待审核邮件。', 'success');
         } catch (Throwable) {
@@ -57,8 +59,9 @@ class TicketAssistanceController extends Controller
             'knowledge_candidate' => ['sometimes', 'boolean'],
             'regenerate' => ['sometimes', 'boolean'],
         ]);
-        DB::transaction(function () use ($ticket, $data, $recorder): void {
-            $recorder->record($ticket, (int) Admin::user()->id, $data, isset($data['work_item_id']) ? WorkItem::findOrFail($data['work_item_id']) : null);
+        $target = isset($data['work_item_id']) ? WorkItem::findOrFail($data['work_item_id']) : null;
+        DB::transaction(function () use ($ticket, $data, $recorder, $target): void {
+            $recorder->record($ticket, (int) Admin::user()->id, $data, $target);
             if (in_array($data['kind'], ['fact', 'decision', 'correction'], true)) {
                 $ticket->update(['draft_guidance_updated_at' => now(), 'draft_guidance_updated_by' => Admin::user()->id]);
             }
@@ -68,10 +71,21 @@ class TicketAssistanceController extends Controller
                 return back()->withErrors(['feedback' => '反馈已保存，已关闭或归档的 Ticket 不重新派工。']);
             }
             try {
-                app(WorkflowRegistry::class)->runnable(N8nTicketDraftService::INVESTIGATION_KEY, N8nTicketDraftService::INVESTIGATION_VERSION);
-                $item = app(TicketWorkItemManager::class)->create($ticket->fresh(), (int) Admin::user()->id, N8nTicketDraftService::INVESTIGATION_KEY, N8nTicketDraftService::INVESTIGATION_VERSION);
-                if ($item->wasRecentlyCreated) {
-                    DispatchTicketAssistance::dispatch($item->id)->afterCommit();
+                if ($target?->workflow_key === TicketAgentWorkflow::KEY) {
+                    $item = app(TicketAgentWorkflow::class)->create(
+                        $ticket->fresh(), (int) Admin::user()->id, (string) data_get($target->input_snapshot, 'provider'),
+                    );
+                    if ($item->wasRecentlyCreated) {
+                        RunTicketAgent::dispatch($item->id)->onConnection('background');
+                    }
+                } else {
+                    $key = $target?->workflow_key ?? N8nTicketDraftService::INVESTIGATION_KEY;
+                    $version = $target?->workflow_version ?? N8nTicketDraftService::INVESTIGATION_VERSION;
+                    app(WorkflowRegistry::class)->runnable($key, $version);
+                    $item = app(TicketWorkItemManager::class)->create($ticket->fresh(), (int) Admin::user()->id, $key, $version);
+                    if ($item->wasRecentlyCreated) {
+                        DispatchTicketAssistance::dispatch($item->id)->afterCommit();
+                    }
                 }
             } catch (Throwable $exception) {
                 report($exception);

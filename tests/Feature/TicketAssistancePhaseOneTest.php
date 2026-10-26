@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\DispatchTicketAssistance;
+use App\Models\AiWorkflow;
 use App\Models\ChannelAccount;
 use App\Models\Conversation;
 use App\Models\ConversationDraft;
@@ -131,6 +132,26 @@ class TicketAssistancePhaseOneTest extends TestCase
         ])->assertSessionHasErrors('feedback');
         $this->assertSame(2, TicketAssistanceFeedback::count());
         $this->assertSame(1, WorkItem::count());
+    }
+
+    public function test_feedback_targeting_v1_keeps_its_version_and_checks_admission(): void
+    {
+        $actor = $this->administrator();
+        $ticket = $this->ticket();
+        $original = app(TicketWorkItemManager::class)->create($ticket, $actor->id, N8nTicketDraftService::WORKFLOW_KEY, N8nTicketDraftService::WORKFLOW_VERSION);
+        $original->update(['status' => 'completed']);
+        $data = ['work_item_id' => $original->id, 'target' => 'analysis', 'kind' => 'fact',
+            'body' => 'A new receiving record needs investigation.', 'regenerate' => true];
+        $this->actingAs($actor, 'admin')->post('/admin/conversations/'.$ticket->id.'/assistance-feedback', $data)->assertSessionHasNoErrors();
+        $rerun = WorkItem::latest('id')->first();
+        $this->assertNotSame($original->id, $rerun->id);
+        $this->assertSame(N8nTicketDraftService::WORKFLOW_KEY, $rerun->workflow_key);
+        $this->assertSame(N8nTicketDraftService::WORKFLOW_VERSION, $rerun->workflow_version);
+        Queue::assertPushed(DispatchTicketAssistance::class, fn ($job) => $job->workItemId === $rerun->id);
+        AiWorkflow::where('workflow_key', N8nTicketDraftService::WORKFLOW_KEY)->update(['status' => 'disabled']);
+        $this->post('/admin/conversations/'.$ticket->id.'/assistance-feedback', $data)->assertSessionHasErrors('feedback');
+        $this->assertSame(2, TicketAssistanceFeedback::count());
+        $this->assertSame(2, WorkItem::count());
     }
 
     public function test_guidance_replacement_and_manual_draft_edits_keep_before_and_after(): void

@@ -14,7 +14,7 @@ class ReapTicketDraftWorkItems extends Command
                             {--queued-minutes=2 : Retry queued WorkItems older than this}
                             {--running-minutes=10 : Recover expired running WorkItems older than this}';
 
-    protected $description = 'Retry undelivered Ticket Draft WorkItems and recover expired n8n leases';
+    protected $description = 'Retry undelivered Ticket Draft WorkItems and recover expired n8n leases and SDK deadlines';
 
     public function handle(N8nTicketDraftWorkflowClient $n8n): int
     {
@@ -75,6 +75,18 @@ class ReapTicketDraftWorkItems extends Command
                     $item->update(['error_message' => mb_substr($exception->getMessage(), 0, 5000)]);
                 }
             });
+
+        $failed += WorkItem::query()
+            ->where('work_type', 'ticket_agent')
+            ->whereIn('status', ['queued', 'running'])
+            ->where(fn ($query) => $query->where('deadline_at', '<=', now())
+                ->orWhere(fn ($query) => $query->whereNull('deadline_at')
+                    ->where('updated_at', '<=', now()->subSeconds((int) config('ticket-agent.timeout') + 120))))
+            ->update([
+                'status' => 'failed',
+                'error_message' => 'Ticket Agent exceeded its deadline. Regenerate manually.',
+                'finished_at' => now(),
+            ]);
 
         $this->info("retried={$retried} failed={$failed}");
 

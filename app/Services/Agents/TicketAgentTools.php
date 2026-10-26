@@ -36,11 +36,14 @@ class TicketAgentTools
 
     private string $expectedHash;
 
-    public function __construct(public readonly Conversation $ticket)
+    private readonly array $runtime;
+
+    public function __construct(public readonly Conversation $ticket, private readonly string $provider = 'minimax')
     {
         if ($ticket->silo !== 'tickets' || $ticket->source_type === 'replay' || ! in_array($ticket->status, ['open', 'pending', 'onhold'], true)) {
             throw new RuntimeException('Only unresolved non-replay Tickets can run the Agent.');
         }
+        $this->runtime = TicketAgentRuntime::capture($this->provider);
         $this->expectedHash = $this->fingerprint();
     }
 
@@ -50,6 +53,7 @@ class TicketAgentTools
 
         return [
             'case_key' => 'ticket:'.$this->ticket->id, 'input_hash' => $this->expectedHash,
+            'runtime' => $this->runtime(),
             'site_key' => $this->ticket->site_key,
             'subject' => $context->redactForConversation((string) $this->ticket->subject, $this->ticket),
             'policy_catalog' => app(TicketPolicyRepository::class)->available($this->ticket->site_key)->map(fn ($p) => [
@@ -77,11 +81,17 @@ class TicketAgentTools
         $events = $ticket->events()->with('attachments')->orderBy('id')->get();
 
         return hash('sha256', json_encode([
+            TicketAgentRuntime::capture($this->provider),
             hash_file('sha256', resource_path('data/ticket-return-playbook-v1.json')),
             $snapshot, $ticket->only(['channel_account_id', 'source_type', 'requester_email', 'requester_snapshot', 'subject']),
             $events->map(fn ($e) => [$e->only(['id', 'event_type', 'body_text', 'is_private', 'author_type', 'occurred_at']),
                 $e->attachments->map(fn ($a) => $a->only(['id', 'filename', 'sha256', 'remote_url', 'updated_at']))->all()])->all(),
         ], JSON_THROW_ON_ERROR));
+    }
+
+    public function runtime(): array
+    {
+        return $this->runtime;
     }
 
     public function hash(): string
@@ -91,7 +101,7 @@ class TicketAgentTools
 
     public function assertCurrent(): void
     {
-        if (! hash_equals($this->expectedHash, $this->fingerprint())) {
+        if ($this->runtime !== TicketAgentRuntime::capture($this->provider) || ! hash_equals($this->expectedHash, $this->fingerprint())) {
             throw new RuntimeException('Ticket input or verified policy changed during the Agent run.');
         }
         foreach ($this->facts as $fact) {

@@ -55,6 +55,28 @@ class TicketDraftWorkItemReaperTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_sdk_deadlines_end_abandoned_tasks_without_retrying_or_losing_evidence(): void
+    {
+        Http::fake();
+        foreach (['queued', 'running'] as $status) {
+            $item = $this->item(['work_type' => 'ticket_agent', 'status' => $status,
+                'deadline_at' => now()->subSecond(), 'result' => ['checkpoints' => [['stage' => 'investigating']]]]);
+            $this->artisan('tickets:reap-draft-work-items')->expectsOutput('retried=0 failed=1')->assertSuccessful();
+            $this->assertSame('failed', $item->fresh()->status);
+            $this->assertSame($item->result, $item->fresh()->result);
+            $this->assertNotNull($item->fresh()->finished_at);
+        }
+        $live = $this->item(['work_type' => 'ticket_agent', 'status' => 'running', 'deadline_at' => now()->addMinute()]);
+        $this->artisan('tickets:reap-draft-work-items')->expectsOutput('retried=0 failed=0')->assertSuccessful();
+        $this->assertSame('running', $live->fresh()->status);
+        $orphan = $this->item(['work_type' => 'ticket_agent', 'status' => 'running', 'deadline_at' => null]);
+        $orphan->timestamps = false;
+        $orphan->update(['updated_at' => now()->subHour()]);
+        $this->artisan('tickets:reap-draft-work-items')->expectsOutput('retried=0 failed=1')->assertSuccessful();
+        $this->assertSame('failed', $orphan->fresh()->status);
+        Http::assertNothingSent();
+    }
+
     private function item(array $overrides): WorkItem
     {
         $case = CustomerCase::create([

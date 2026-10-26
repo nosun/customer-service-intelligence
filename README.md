@@ -1,18 +1,22 @@
 # Customer Service Intelligence
 
-基于 Laravel 13 的本地客服邮件采集与分析 MVP。当前只读取 Gmail 邮件，不发送邮件，也不执行退款、取消、改地址或订单修改。
+基于 Laravel 13 的客服工作台：采集 Gmail / HelpDesk 消息，为 Ticket 提供情况分析、处理意见、待人工审核的邮件草稿，并支持个案补充与反馈。另有商品问答、统一知识与研究分析功能。业务邮件发送和订单动作仍由人工执行。
+
+当前执行路径、候选状态和退役条件以 [当前工作流与路线图](docs/architecture/current-workflows-and-roadmap.md) 为准；[健康审查](docs/reviews/2026-10-26-project-health-and-roadmap.md) 保留审查时点的证据。
 
 ## 环境
 
 - PHP 8.4+
 - Composer
 - SQLite
+- Node.js 22+ 与 npm（SDK 智能体及统一检查需要）
 - Google Workspace CLI (`gws`，仅真实 Gmail 同步时需要)
 
 ## 初始化
 
 ```bash
 composer install
+npm --prefix agents/ticket-investigator ci
 cp .env.example .env
 php artisan key:generate
 touch database/database.sqlite
@@ -30,7 +34,17 @@ php artisan migrate
 php artisan admin:create-user
 ```
 
-启动项目后访问 `/admin`。Ticket 后台位于 `/admin/conversations`，支持列表、关键词与字段筛选、详情查看，以及按时间顺序查看消息和状态事件。当前后台只读，避免本地修改被下一次 HelpDesk 同步覆盖。
+启动项目后访问 `/admin`。Ticket 后台位于 `/admin/conversations`，支持列表、关键词与字段筛选、详情查看，以及按时间顺序查看消息和状态事件。同步的 HelpDesk 消息作为来源证据；本地可编辑个案补充、反馈和待审核草稿，SDK 通过详情页手动启动。自动派工按 `TICKET_ASSISTANCE_ENABLED` 配置控制，启用前需验收 n8n v2 与队列。
+
+## 本地统一检查
+
+```bash
+composer check
+```
+
+依次执行 Feature + Unit、Node SDK 测试、Return 流程与文档一致性、PHP 格式及 diff 空白检查；任一组失败立即返回非零。首次执行前安装上面的 Composer 和 Node 依赖。常规检查使用测试数据、脚本模型和本地进程，不访问真实模型。
+
+真实模型回放、客服逐案验收和外部集成验收独立记录，参见 [当前路线图](docs/architecture/current-workflows-and-roadmap.md)。`php artisan test` 包含 Feature 与 Unit；只检查 SDK 可执行 `npm --prefix agents/ticket-investigator test`。
 
 ## 使用测试样本验证
 
