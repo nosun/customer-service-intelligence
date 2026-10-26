@@ -158,6 +158,8 @@ class ProductQuestionDraftReplayRunner
             'type' => 1,
             'type_text' => 'Replay question',
             'question' => (string) $case['question'],
+            'draft_guidance' => filled($case['draft_guidance'] ?? null) ? trim($case['draft_guidance']) : null,
+            'draft_guidance_updated_at' => filled($case['draft_guidance'] ?? null) ? now() : null,
             'reply_status' => 'unanswered',
             'needs_reply' => true,
             'visible' => false,

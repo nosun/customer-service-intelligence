@@ -12,6 +12,20 @@ class ProductQuestion extends Model
 {
     protected $guarded = [];
 
+    /** @return array<string,mixed>|null */
+    public function draftGuidance(): ?array
+    {
+        $text = trim((string) $this->draft_guidance);
+
+        return $text === '' ? null : [
+            'text' => $text,
+            'source' => 'admin_supplement',
+            'scope' => 'current_question_only',
+            'updated_by' => $this->draft_guidance_updated_by,
+            'updated_at' => $this->draft_guidance_updated_at?->toIso8601String(),
+        ];
+    }
+
     public function scopeWithoutReplay(Builder $query): Builder
     {
         return $query->where('name', '!=', '__CSI_N8N_REPLAY__');
@@ -64,6 +78,7 @@ class ProductQuestion extends Model
             'synced_at' => 'datetime',
             'reviewed_at' => 'datetime',
             'replied_at' => 'datetime',
+            'draft_guidance_updated_at' => 'datetime',
         ];
     }
 }

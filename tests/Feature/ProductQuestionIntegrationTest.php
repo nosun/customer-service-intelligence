@@ -708,6 +708,135 @@ class ProductQuestionIntegrationTest extends TestCase
             ->assertSee('<strong>1</strong><span>待回复</span>', false);
     }
 
+    public function test_administrator_can_sync_questions_for_only_the_selected_site(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $site = $this->site();
+        $other = $site->replicate();
+        $other->site_key = 'other';
+        $other->save();
+        Http::fake(['dressafford.test/*' => Http::response([
+            'success' => true,
+            'data' => [
+                'items' => [$this->question()],
+                'pagination' => ['current_page' => 1, 'last_page' => 1, 'total' => 1],
+            ],
+        ])]);
+
+        $this->get('/admin/product-questions?site_id='.$site->id)
+            ->assertOk()->assertSee('同步问题')->assertDontSee('同步商品信息');
+        $this->postJson('/admin/product-questions/sync', ['site_id' => $site->id])
+            ->assertOk()->assertJson(['message' => '问题同步完成：保存 1 条。']);
+        $this->assertDatabaseHas('product_questions', ['commerce_site_id' => $site->id, 'external_id' => 120]);
+        $this->assertDatabaseMissing('product_questions', ['commerce_site_id' => $other->id]);
+        Http::assertSentCount(1);
+    }
+
+    public function test_sync_actions_require_a_valid_enabled_site_and_admin_login(): void
+    {
+        $site = $this->site();
+        $site->update(['enabled' => false]);
+        foreach (['sync', '120/sync-product'] as $action) {
+            $this->post('/admin/product-questions/'.$action, ['site_id' => $site->id])
+                ->assertRedirect('/admin/auth/login');
+        }
+        $this->actingAs($this->administrator(), 'admin');
+        foreach (['sync', '120/sync-product'] as $action) {
+            $this->postJson('/admin/product-questions/'.$action, [])->assertUnprocessable();
+            $this->postJson('/admin/product-questions/'.$action, ['site_id' => 'invalid'])->assertUnprocessable();
+            $this->postJson('/admin/product-questions/'.$action, ['site_id' => $site->id])->assertNotFound();
+            $this->postJson('/admin/product-questions/'.$action, ['site_id' => 9999])->assertNotFound();
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_question_sync_failure_is_reported_without_claiming_success(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $site = $this->site();
+        Http::fake(['*' => Http::response(['success' => false, 'code' => 'FORBIDDEN', 'message' => 'Access denied'], 403)]);
+        $this->postJson('/admin/product-questions/sync', ['site_id' => $site->id])
+            ->assertStatus(502)->assertJson(['message' => 'FORBIDDEN: Access denied']);
+        $this->assertSame('failed', $site->fresh()->product_question_sync_status);
+    }
+
+    public function test_product_sync_only_refreshes_the_current_questions_product(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $site = $this->site();
+        $sync = app(ProductQuestionSyncService::class);
+        $sync->storeQuestion($site, $this->question(['sn' => 'CURRENT']));
+        $sync->storeQuestion($site, $this->question(['id' => 121, 'sn' => 'OTHER']));
+        $other = $site->replicate();
+        $other->site_key = 'other';
+        $other->save();
+        $sync->storeQuestion($other, $this->question(['sn' => 'OTHER-SITE']));
+        Http::fake([
+            'dressafford.test/api/admin/products/CURRENT' => Http::response([
+                'success' => true, 'data' => ['product' => ['name' => 'Updated dress']],
+            ]),
+            'dressafford.test/api/admin/products/CURRENT/options' => Http::response([
+                'success' => true, 'data' => ['colors' => ['Blue'], 'sizes' => ['S']],
+            ]),
+        ]);
+        $this->get('/admin/product-questions/120?site_id='.$site->id)
+            ->assertOk()->assertSee('同步当前商品信息');
+        $this->post('/admin/product-questions/120/sync-product', [
+            'site_id' => $site->id, 'sn' => 'OTHER',
+        ])->assertRedirect('/admin/product-questions/120?site_id='.$site->id);
+        Http::assertSentCount(2);
+        $this->assertDatabaseHas('commerce_products', [
+            'commerce_site_id' => $site->id, 'sn' => 'CURRENT', 'name' => 'Updated dress', 'sync_status' => 'completed',
+        ]);
+        $this->assertSame(1, CommerceProduct::count());
+        $this->get('/admin/product-questions/120?site_id='.$site->id)
+            ->assertOk()->assertSee('Updated dress')->assertSee('Blue');
+    }
+
+    public function test_product_sync_rejects_missing_deleted_replay_and_empty_sn_questions(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $site = $this->site();
+        $sync = app(ProductQuestionSyncService::class);
+        $empty = $sync->storeQuestion($site, $this->question(['sn' => '']));
+        $deleted = $sync->storeQuestion($site, $this->question(['id' => 121]));
+        $deleted->update(['remote_present' => false]);
+        $sync->storeQuestion($site, $this->question(['id' => 122, 'name' => '__CSI_N8N_REPLAY__']));
+        $other = $site->replicate();
+        $other->site_key = 'other';
+        $other->save();
+        $sync->storeQuestion($other, $this->question(['id' => 123]));
+        foreach ([121, 122, 123, 999] as $id) {
+            $this->post('/admin/product-questions/'.$id.'/sync-product', ['site_id' => $site->id])->assertNotFound();
+        }
+        $this->post('/admin/product-questions/120/sync-product', ['site_id' => $site->id])
+            ->assertRedirect('/admin/product-questions/120?site_id='.$site->id);
+        $this->assertSame('当前问题没有商品 SN，无法同步。', session('toastr')->first('message'));
+        $empty->update(['sn' => '   ']);
+        $this->post('/admin/product-questions/120/sync-product', ['site_id' => $site->id])->assertRedirect();
+        Http::assertNothingSent();
+    }
+
+    public function test_product_sync_failure_returns_to_current_question_and_can_be_retried(): void
+    {
+        $this->actingAs($this->administrator(), 'admin');
+        $site = $this->site();
+        app(ProductQuestionSyncService::class)->storeQuestion($site, $this->question());
+        $this->mock(ProductCatalogSyncService::class, function ($mock) use ($site): void {
+            $mock->shouldReceive('sync')->twice()->withArgs(fn ($selected, $sn) => $selected->is($site) && $sn === 'QA100')
+                ->andReturn(
+                    ['status' => 'failed', 'product_id' => null, 'error' => 'connection failed'],
+                    ['status' => 'completed', 'product_id' => null, 'error' => null],
+                );
+        });
+        $url = '/admin/product-questions/120/sync-product';
+        $redirect = '/admin/product-questions/120?site_id='.$site->id;
+        $this->post($url, ['site_id' => $site->id])->assertRedirect($redirect);
+        $this->assertSame('error', session('toastr')->first('type'));
+        $this->post($url, ['site_id' => $site->id])->assertRedirect($redirect);
+        $this->assertSame('success', session('toastr')->first('type'));
+    }
+
     private function administrator(): Administrator
     {
         $administrator = Administrator::create([

@@ -48,6 +48,7 @@ class ProductQuestionDraftReplayRunnerTest extends TestCase
                 if ($caseId === 'pq-001') {
                     $this->assertSame('Yes', data_get($request->question->raw_payload, '_replay.fixture.product.attributes.field_builtinbra'));
                     $this->assertNotNull(data_get($request->input_snapshot, 'question.replay_fixture_hash'));
+                    $this->assertSame('Factory confirmed the modification.', data_get($request->input_snapshot, 'question.draft_guidance.text'));
                 }
                 $draft = ProductQuestionDraft::create([
                     'product_question_id' => $request->product_question_id,
@@ -70,7 +71,7 @@ class ProductQuestionDraftReplayRunnerTest extends TestCase
             $site,
             $product,
             [
-                ['id' => 'pq-001', 'question' => 'Does it have pockets?', 'fixture' => [
+                ['id' => 'pq-001', 'question' => 'Does it have pockets?', 'draft_guidance' => 'Factory confirmed the modification.', 'fixture' => [
                     'product' => ['attributes' => ['field_builtinbra' => 'Yes']],
                 ]],
                 ['id' => 'pq-049', 'question' => 'Show my order publicly.'],

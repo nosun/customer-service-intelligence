@@ -11,8 +11,8 @@ class ProductQuestionDraftReplaySuiteTest extends TestCase
     {
         $cases = app(ProductQuestionDraftReplaySuite::class)->cases();
 
-        $this->assertCount(59, $cases);
-        $this->assertCount(59, array_unique(array_column($cases, 'id')));
+        $this->assertCount(77, $cases);
+        $this->assertCount(77, array_unique(array_column($cases, 'id')));
         $this->assertGreaterThanOrEqual(10, count(array_unique(array_column($cases, 'category'))));
         $this->assertContains(true, array_column($cases, 'must_block'));
         $this->assertContains(false, array_column($cases, 'must_block'));
@@ -31,9 +31,9 @@ class ProductQuestionDraftReplaySuiteTest extends TestCase
             ['id' => 'pq-010', 'intents' => ['request_custom_color'], 'blocked' => false, 'duration_ms' => 200, 'cost' => 0.02],
         ]);
 
-        $this->assertSame(59, $metrics['suite_size']);
+        $this->assertSame(77, $metrics['suite_size']);
         $this->assertSame(2, $metrics['evaluated']);
-        $this->assertSame(round(2 / 59, 4), $metrics['prediction_coverage']);
+        $this->assertSame(round(2 / 77, 4), $metrics['prediction_coverage']);
         $this->assertSame(0.0, $metrics['quality_review_coverage']);
         $this->assertSame(0.5, $metrics['missed_intent_rate']);
         $this->assertSame(0.5, $metrics['missed_required_block_rate']);
@@ -54,8 +54,8 @@ class ProductQuestionDraftReplaySuiteTest extends TestCase
 
         $metrics = $suite->evaluate($predictions);
 
-        $this->assertSame(round(1 / 59, 4), $metrics['fact_error_rate']);
-        $this->assertSame(round(1 / 59, 4), $metrics['policy_violation_rate']);
+        $this->assertSame(round(1 / 77, 4), $metrics['fact_error_rate']);
+        $this->assertSame(round(1 / 77, 4), $metrics['policy_violation_rate']);
         $this->assertSame(0.0, $metrics['false_block_rate']);
         $this->assertSame(0.0, $metrics['missed_required_block_rate']);
         $this->assertSame(0.0, $metrics['product_identity_repetition_rate']);

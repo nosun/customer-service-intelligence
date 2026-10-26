@@ -15,7 +15,7 @@ use RuntimeException;
 
 class N8nProductQuestionDraftService
 {
-    public const REPLY_STYLE_VERSION = 'decision-v11-service-strategy';
+    public const REPLY_STYLE_VERSION = 'decision-v15-return-decision';
 
     public const WORKFLOW_KEY = 'work/qa-draft-agent-v1';
 
@@ -81,6 +81,7 @@ class N8nProductQuestionDraftService
             'external_question_id' => $question->external_id,
             'site_key' => $question->site->site_key,
             'question' => $this->redact(trim($question->question)),
+            'operator_guidance' => $question->draftGuidance(),
             'product_sn' => $question->sn,
             'question_created_at' => $question->remote_created_at?->toIso8601String(),
             'current_date' => now()->toDateString(),
@@ -122,9 +123,11 @@ class N8nProductQuestionDraftService
     /** @return array<string, mixed> */
     public function resolveFacts(ProductQuestionDraftRequest $request, array $plan): array
     {
+        $this->assertGuidanceUnchanged($request, $request->question->fresh());
         $plan = $this->validatedPlan($request->question, $plan);
         $resolved = $this->facts->resolve($request->question, $plan);
         $workflow = $this->workflows->runnable($request->workflow_key, $request->workflow_version);
+        $this->assertGuidanceUnchanged($request, $request->question->fresh());
         $currentInput = $this->input->capture(
             $request->question->fresh(),
             $request->workflow_key,
@@ -141,11 +144,9 @@ class N8nProductQuestionDraftService
     {
         $question = $request->question()->with('site')->firstOrFail();
         $allowed = $this->availablePolicies($question);
-        $selected = $allowed->filter(fn (KnowledgeArticle $article): bool => in_array(
-            $this->intent($article),
-            $intents,
-            true,
-        ));
+        $selected = $allowed->filter(fn (KnowledgeArticle $article): bool => $intents !== []
+            && ($article->bindings->contains('intent_key', '*')
+                || array_intersect($this->knowledge->intentKeys($article), $intents) !== []));
 
         return ['data' => $selected->map(fn (KnowledgeArticle $article): array => [
             'id' => $article->id,
@@ -197,7 +198,20 @@ class N8nProductQuestionDraftService
         }
         $plan = $this->validatedPlan($question, (array) ($payload['plan'] ?? []));
         $facts = (array) ($payload['facts'] ?? []);
+        // The stored supplement is authoritative; completion payloads cannot replace it.
+        unset($facts['operator_guidance']);
+        if ($guidance = $question->draftGuidance()) {
+            $facts['operator_guidance'] = $guidance;
+        }
         $factSources = array_values((array) ($payload['fact_sources'] ?? []));
+        $factSources = array_values(array_filter($factSources, fn ($source): bool => data_get($source, 'fact_group') !== 'operator_guidance'));
+        if ($guidance !== null) {
+            $factSources[] = [
+                'fact_group' => 'operator_guidance',
+                'source' => 'product_questions.draft_guidance',
+                'captured_at' => $guidance['updated_at'],
+            ];
+        }
         $missing = array_values(array_unique(array_filter((array) ($payload['missing_facts'] ?? []), 'is_string')));
         $review = (array) ($payload['review'] ?? []);
         $decisionPlan = (array) ($review['decision_plan'] ?? []);
@@ -266,6 +280,12 @@ class N8nProductQuestionDraftService
             : 'blocked';
 
         if ($usesDecisionPlan) {
+            if ($guidance !== null && (! is_array($review['guidance_conflicts'] ?? null)
+                || $review['guidance_conflicts'] !== []
+                || ! is_array($review['guidance_supported_intents'] ?? null))) {
+                $status = 'blocked';
+                $safetyFlags[] = 'Operator guidance has conflicting evidence or is missing independent review.';
+            }
             if (($strategy['response_mode'] ?? null) === 'human_review'
                 || (($strategy['response_mode'] ?? null) === 'email_handoff'
                     && (! $emailHandoff || ! str_contains($answerEn, (string) $strategy['contact_email'])))) {
@@ -320,7 +340,10 @@ class N8nProductQuestionDraftService
             $safetyFlags[] = 'The answer promises a follow-up action that this workflow cannot execute.';
         }
         if ($usesDecisionPlan || version_compare($request->workflow_version, '1.2.0', '>=')) {
-            $blockingReasons = $this->planGuard->blockingReasons($plan['intents'], $facts, $missing, $verifiedPolicyIntents);
+            $blockingReasons = $this->planGuard->blockingReasons(
+                $plan['intents'], $facts, $missing, $verifiedPolicyIntents,
+                $usesDecisionPlan ? $this->reviewedGuidanceIntents($question, $decisionPlan, $review) : [],
+            );
             // A broad individual consultation can be routed without asserting alteration feasibility.
             // Specific unsupported alterations and other independent requests retain their guards.
             if ($emailHandoff) {
@@ -422,6 +445,40 @@ class N8nProductQuestionDraftService
         ]);
 
         throw new RuntimeException($message);
+    }
+
+    private function assertGuidanceUnchanged(ProductQuestionDraftRequest $request, ProductQuestion $question): void
+    {
+        if (data_get($request->input_snapshot, 'question.draft_guidance') !== $question->draftGuidance()) {
+            $this->markStale($request, 'Operator guidance changed while resolving facts; create a new request.');
+        }
+    }
+
+    /** @return list<string> */
+    private function reviewedGuidanceIntents(ProductQuestion $question, array $decisionPlan, array $review): array
+    {
+        $text = $question->draftGuidance()['text'] ?? '';
+        if ($text === '' || ($review['guidance_conflicts'] ?? null) !== []) {
+            return [];
+        }
+        $supported = [];
+        foreach ((array) ($decisionPlan['answer_units'] ?? []) as $unit) {
+            if (empty($unit['supported_answer_points'])) {
+                continue;
+            }
+            foreach ((array) ($unit['guidance_evidence'] ?? []) as $evidence) {
+                $intent = $evidence['intent'] ?? null;
+                $quote = $evidence['quote'] ?? null;
+                if (is_string($intent) && is_string($quote) && trim($quote) !== ''
+                    && str_contains($text, $quote)
+                    && in_array($intent, (array) ($unit['covered_intents'] ?? []), true)
+                    && in_array($intent, (array) ($review['guidance_supported_intents'] ?? []), true)) {
+                    $supported[] = $intent;
+                }
+            }
+        }
+
+        return array_values(array_unique($supported));
     }
 
     /** @return Collection<int, KnowledgeArticle> */

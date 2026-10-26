@@ -34,6 +34,86 @@ class N8nWorkflowDefinitionTest extends TestCase
         }
     }
 
+    public function test_classification_distinguishes_hypothetical_refund_policy_from_actual_private_refunds(): void
+    {
+        $workflow = json_decode(file_get_contents(base_path('n8n/workflows/work__qa-draft-agent-v1.json')), true, flags: JSON_THROW_ON_ERROR);
+        $code = collect($workflow['nodes'])->keyBy('name')['Build Classification Prompt']['parameters']['jsCode'];
+        $question = 'If the sleeves do not fit, can it be returned with a full refund?';
+        $script = 'const $input = {first: () => ({json: {context: {question: '.json_encode($question).'}}})};'
+            .'process.stdout.write(JSON.stringify((new Function("$input", '.json_encode($code).'))($input)[0].json));';
+        $process = new Process(['node', '-e', $script]);
+        $process->mustRun();
+        $prompt = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($question, json_decode($prompt['user_prompt'], true)['question']);
+        $this->assertStringContainsString('ask_return_policy, not ask_fit or ask_refund', $prompt['system_prompt']);
+        $this->assertStringContainsString('actual refund request or its status', $prompt['system_prompt']);
+        $this->assertStringContainsString('must not be relabeled as general policy', $prompt['system_prompt']);
+    }
+
+    public function test_return_decision_rules_reach_planning_writing_repair_and_both_reviews(): void
+    {
+        $workflow = json_decode(file_get_contents(base_path('n8n/workflows/work__qa-draft-agent-v1.json')), true, flags: JSON_THROW_ON_ERROR);
+        $nodes = collect($workflow['nodes'])->keyBy('name');
+        $question = 'If it does not fit properly, especially the sleeves, can it be returned with a full refund?';
+        foreach (['Build Answer Scope Prompt', 'Build Concise Reply Prompt', 'Build Repair Prompt', 'Build Review Prompt', 'Build Final Review Prompt'] as $name) {
+            $script = 'const $ = name => ({first: () => ({json: name === "Start Draft Request" ? {context: {question: '.json_encode($question).'}} : name === "Resolve Product Order and Live Facts" ? {plan: {intents: ["ask_return_policy"]}, facts: {}} : {data: [], output: {}}})});'
+                .'const $input = {first: () => ({json: {data: [], output: {}}})};'
+                .'process.stdout.write(JSON.stringify((new Function("$", "$input", '.json_encode($nodes[$name]['parameters']['jsCode']).'))($, $input)[0].json));';
+            $process = new Process(['node', '-e', $script]);
+            $process->mustRun();
+            $prompt = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($question, json_decode($prompt['user_prompt'], true)['question']);
+            foreach (['pre-purchase', 'post-receipt', 'return eligibility', 'refund scope', 'uncertainty', 'customizable'] as $rule) {
+                $this->assertStringContainsString($rule, $prompt['system_prompt'], $name.' '.$rule);
+            }
+        }
+    }
+
+    public function test_guidance_original_text_reaches_planning_writing_and_both_reviews(): void
+    {
+        $workflow = json_decode(file_get_contents(base_path('n8n/workflows/work__qa-draft-agent-v1.json')), true, flags: JSON_THROW_ON_ERROR);
+        $nodes = collect($workflow['nodes'])->keyBy('name');
+        $guidance = ['text' => 'Factory confirms tea length with no alteration surcharge.', 'scope' => 'current_question_only'];
+        foreach (['Build Answer Scope Prompt', 'Build Concise Reply Prompt', 'Build Review Prompt', 'Build Repair Prompt', 'Build Final Review Prompt'] as $name) {
+            $script = 'const guidance = '.json_encode($guidance).';'
+                .'const $ = name => ({first: () => ({json: name === "Start Draft Request" ? {context: {question: "Can you change the length?"}} : name === "Resolve Product Order and Live Facts" ? {plan: {}, facts: {operator_guidance: guidance}} : {data: [], output: {}}})});'
+                .'const $input = {first: () => ({json: {data: [], output: {}}})};'
+                .'process.stdout.write(JSON.stringify((new Function("$", "$input", '.json_encode($nodes[$name]['parameters']['jsCode']).'))($, $input)[0].json));';
+            $process = new Process(['node', '-e', $script]);
+            $process->mustRun();
+            $prompt = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            $input = json_decode($prompt['user_prompt'], true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($guidance, $input['operator_guidance'], $name);
+            if (in_array($name, ['Build Review Prompt', 'Build Final Review Prompt'], true)) {
+                $this->assertStringContainsString('guidance_supported_intents', $prompt['system_prompt']);
+                $this->assertStringContainsString('guidance_conflicts', $prompt['system_prompt']);
+            }
+        }
+    }
+
+    public function test_guidance_conflicts_and_missing_review_are_blocked_by_both_review_guards(): void
+    {
+        $workflow = json_decode(file_get_contents(base_path('n8n/workflows/work__qa-draft-agent-v1.json')), true, flags: JSON_THROW_ON_ERROR);
+        $nodes = collect($workflow['nodes'])->keyBy('name');
+        foreach (['valid', 'conflict', 'missing'] as $scenario) {
+            foreach (['Apply Review Guards', 'Apply Final Review Guards'] as $name) {
+                $review = ['approved' => true, 'must_block' => false, 'final_answer_en' => 'We can alter the length.'];
+                if ($scenario !== 'missing') {
+                    $review += ['guidance_supported_intents' => ['request_custom_length'], 'guidance_conflicts' => $scenario === 'conflict' ? ['Conflicts with verified policy'] : []];
+                }
+                $script = 'const review = '.json_encode($review).';'
+                    .'const $ = name => ({first: () => ({json: name === "Plan Answer Scope" ? {output: {answer_units: []}} : name === "Start Draft Request" ? {context: {}} : name === "Resolve Product Order and Live Facts" ? {facts: {operator_guidance: {text: "Confirmed length change"}}} : {data: [], output: {answer_en: "We can alter the length."}}})});'
+                    .'const $input = {first: () => ({json: {output: review}})};'
+                    .'process.stdout.write(JSON.stringify((new Function("$", "$input", '.json_encode($nodes[$name]['parameters']['jsCode']).'))($, $input)[0].json));';
+                $process = new Process(['node', '-e', $script]);
+                $process->mustRun();
+                $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($scenario === 'valid', $result['output']['approved'], $scenario.' '.$name);
+                $this->assertSame($scenario !== 'valid', $result['output']['must_block'], $scenario.' '.$name);
+            }
+        }
+    }
+
     public function test_consultation_scope_requires_a_verified_channel_and_a_hidden_reply(): void
     {
         $workflow = json_decode(file_get_contents(base_path('n8n/workflows/work__qa-draft-agent-v1.json')), true, flags: JSON_THROW_ON_ERROR);
@@ -89,7 +169,7 @@ class N8nWorkflowDefinitionTest extends TestCase
         $workflow = json_decode(file_get_contents(base_path('n8n/workflows/work__qa-draft-agent-v1.json')), true, flags: JSON_THROW_ON_ERROR);
         $nodes = collect($workflow['nodes'])->keyBy('name');
         $passingChecks = array_fill_keys(['factual_accuracy', 'relevance', 'actionable_guidance', 'natural_tone', 'decision_risks', 'intent_coverage', 'language_equivalence'], true);
-        foreach ([$passingChecks, [...$passingChecks, 'relevance' => false], []] as $checks) {
+        foreach ([$passingChecks, [...$passingChecks, 'relevance' => false], [...$passingChecks, 'decision_risks' => false], [...$passingChecks, 'intent_coverage' => false], [...$passingChecks, 'factual_accuracy' => false], []] as $checks) {
             foreach (['Apply Review Guards', 'Apply Final Review Guards'] as $name) {
                 $script = 'const checks = '.json_encode($checks).';'
                     .'const $ = name => ({first: () => ({json: name === "Plan Answer Scope" ? {output: {version: "customer-decision-v1", answer_units: [{essential_unknowns: []}]}} : name === "Start Draft Request" ? {context: {}} : name === "Resolve Product Order and Live Facts" ? {facts: {}} : {data: [], output: {answer_en: "Please use the chart."}}})});'

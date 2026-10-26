@@ -50,6 +50,14 @@ class ProductQuestionFactResolver
             'source' => 'commerce_sites',
             'captured_at' => now()->toIso8601String(),
         ]];
+        if ($guidance = $question->draftGuidance()) {
+            $facts['operator_guidance'] = $guidance;
+            $sources[] = [
+                'fact_group' => 'operator_guidance',
+                'source' => 'product_questions.draft_guidance',
+                'captured_at' => $guidance['updated_at'],
+            ];
+        }
         // Replay may simulate an unconfigured channel, but cannot invent a site address.
         if (array_key_exists('customer_service_email', (array) data_get($fixture, 'facts.site'))
             && data_get($fixture, 'facts.site.customer_service_email') === null) {

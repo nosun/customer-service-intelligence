@@ -70,6 +70,12 @@ AI 和内部 API 节点会有限重试。失败会回写 `product_question_draft
 
 普通“生成 Draft”按完整输入指纹复用已完成结果；“强制重新生成”才创建新的 n8n Execution。问题、Analysis、商品快照、站点配置、verified Policy、Workflow/Prompt/模型任一变化都会产生新输入，运行中的变化会使请求转为 `stale`。
 
+问答详情可选填“指导补充”，生成时自动保存，也可单独保存或清空。该补充只适用于当前问题，参与输入指纹并传入现有规划、生成和独立审核；不增加模型调用。明确的工厂结论可补充个案事实，建议和未确认事项不能变成承诺，政策冲突保留人工处理。完整语义及引用/审核契约见[流程说明](../docs/architecture/product-question-draft-workflow.md#当前问题的指导补充)。
+
+退货咨询的本地定义已补充购买前咨询、收货后申请及疑似质量/尺寸偏差的区分；“能否退货”和“全额退款范围”分别选证据，并在初审、一次修订和终审中检查。实际退款请求仍保留私有数据与人工审核边界，不增加模型调用。对应回放案例为 `return-*` 六项，包含 #899 的原问题；`REPLY_STYLE_VERSION=decision-v15-return-decision` 使旧输入缓存失效。修改 JSON 文件不等于运行实例已更新；需要按既有回放与人工审核流程导入、验证后再发布。
+
+下单备注流程由已验证的 `qa_process_confirmed_order_requirements` 提供，配送参考价及结账计价规则由 `qa_global_ask_shipping_options` 提供；工作流按适用政策选择步骤。修改内容、数值要求及照片时点以当前个案证据为准，提示词不预设某种改款或拍照流程。
+
 工作流向 Laravel 发送 n8n `execution.id`。Laravel 使用 `workflow_key + workflow_version + execution_id + question_id` 幂等并记录到 `n8n_workflow_executions`。
 
 导入工作流后注册发布版本：

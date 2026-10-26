@@ -37,6 +37,7 @@ class ProductQuestionDraftInput
             'question' => [
                 'id' => $question->id,
                 'text' => $question->question,
+                'draft_guidance' => $question->draftGuidance(),
                 'sn' => $question->sn,
                 'reply_status' => $question->reply_status,
                 'remote_present' => $question->remote_present,

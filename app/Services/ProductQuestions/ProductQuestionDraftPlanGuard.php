@@ -6,6 +6,13 @@ use App\Models\ProductQuestionAnalysis;
 
 class ProductQuestionDraftPlanGuard
 {
+    public const GUIDANCE_INTENTS = [
+        'request_custom_color', 'request_custom_length', 'request_add_sleeves',
+        'request_remove_sleeves', 'request_change_neckline', 'request_change_back',
+        'request_remove_train', 'request_add_train', 'request_mix_designs',
+        'request_other_customization', 'ask_product_photos', 'ask_color_photos',
+    ];
+
     /** @return list<string> */
     public function supportedIntents(): array
     {
@@ -68,9 +75,10 @@ class ProductQuestionDraftPlanGuard
      * @param  array<string,mixed>  $facts
      * @param  list<string>  $missing
      * @param  list<string>  $verifiedPolicyIntents
+     * @param  list<string>  $verifiedGuidanceIntents
      * @return list<string>
      */
-    public function blockingReasons(array $intents, array $facts, array $missing, array $verifiedPolicyIntents = []): array
+    public function blockingReasons(array $intents, array $facts, array $missing, array $verifiedPolicyIntents = [], array $verifiedGuidanceIntents = []): array
     {
         $alwaysBlock = [
             'ask_product_photos', 'ask_color_photos', 'ask_fit', 'request_custom_color',
@@ -82,6 +90,7 @@ class ProductQuestionDraftPlanGuard
         ];
         $reasons = collect($intents)
             ->intersect($alwaysBlock)
+            ->diff(array_intersect(self::GUIDANCE_INTENTS, $verifiedGuidanceIntents))
             ->map(fn (string $intent): string => 'intent_requires_human_review:'.$intent)
             ->values()
             ->all();
@@ -107,6 +116,7 @@ class ProductQuestionDraftPlanGuard
     private function intentRules(): array
     {
         return [
+            ['pattern' => '/\b(?:price|total|cost)\b.{0,40}\b(?:including|includes?|incl\.?|with)\s+(?:the\s+)?(?:shipping|delivery|postage)\b|\b(?:shipping|delivery|postage)\s+(?:cost|charge|fee|price)s?\b|\bhow much\b.{0,25}\b(?:shipping|delivery|postage)\b/i', 'add' => ['ask_shipping_options']],
             ['pattern' => '/\bbuilt[- ]?in bra\b/i', 'add' => ['ask_built_in_bra']],
             ['pattern' => '/\b(?:zipper|lace[- ]?up|back closure)\b/i', 'add' => ['ask_closure']],
             ['pattern' => '/\b(?:red|green|blue|black|white|ivory|champagne|pink|purple|burgundy|navy|teal|gold|silver)\b.{0,25}\bavailable\b/i', 'add' => ['ask_available_colors'], 'remove' => ['request_custom_color']],

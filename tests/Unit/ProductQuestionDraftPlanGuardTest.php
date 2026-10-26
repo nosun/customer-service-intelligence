@@ -79,6 +79,26 @@ class ProductQuestionDraftPlanGuardTest extends TestCase
         );
     }
 
+    public function test_delivered_price_recovers_shipping_without_treating_photo_dispatch_as_shipping(): void
+    {
+        $guard = app(ProductQuestionDraftPlanGuard::class);
+        foreach ([
+            'The total price including delivery to the UK.',
+            'What is the price including shipping?',
+            'What is the UK delivery cost?',
+            'How much is shipping to the UK?',
+        ] as $question) {
+            $this->assertContains('ask_shipping_options', $guard->normalizeIntents($question, ['ask_price']), $question);
+        }
+        foreach ([
+            'Is there an extra alteration charge?',
+            'Can you send photos before dispatch?',
+            'Can it arrive before my wedding?',
+        ] as $question) {
+            $this->assertNotContains('ask_shipping_options', $guard->normalizeIntents($question, ['ask_price']), $question);
+        }
+    }
+
     public function test_fabric_swatch_does_not_create_a_second_generic_fabric_intent(): void
     {
         $actual = app(ProductQuestionDraftPlanGuard::class)->normalizeIntents(

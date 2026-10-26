@@ -1001,7 +1001,7 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
         $this->candidateWorkflow();
         $answer = "Yes, size 8 is currently in stock.\n\nYou can choose it from the size options.";
         $checks = array_fill_keys(['factual_accuracy', 'relevance', 'actionable_guidance', 'natural_tone', 'decision_risks', 'intent_coverage', 'language_equivalence'], true);
-        foreach (['accepted', 'relevance_failed', 'missing_checks', 'review_rejected', 'unknown_evidence', 'unsupported_action'] as $index => $scenario) {
+        foreach (['accepted', 'relevance_failed', 'decision_risks_failed', 'intent_coverage_failed', 'factual_accuracy_failed', 'missing_checks', 'review_rejected', 'unknown_evidence', 'unsupported_action'] as $index => $scenario) {
             $request = ProductQuestionDraftRequest::create([
                 'request_id' => 'decision-quality-'.$index,
                 'product_question_id' => $question->id,
@@ -1023,6 +1023,9 @@ class N8nProductQuestionWorkflowApiTest extends TestCase
                     'final_answer_en' => $reviewedAnswer,
                     'quality_checks' => match ($scenario) {
                         'relevance_failed' => [...$checks, 'relevance' => false],
+                        'decision_risks_failed' => [...$checks, 'decision_risks' => false],
+                        'intent_coverage_failed' => [...$checks, 'intent_coverage' => false],
+                        'factual_accuracy_failed' => [...$checks, 'factual_accuracy' => false],
                         'missing_checks' => [],
                         default => $checks,
                     },

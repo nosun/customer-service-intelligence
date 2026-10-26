@@ -3,6 +3,7 @@
     $notification = $preview['notification']['status'] ?? null;
     $reviewLabels = ['unreviewed' => '未分析', 'reviewing' => '分析中', 'reviewed' => '已分析', 'ignored' => '已忽略'];
     $analysis = $question->analysis;
+    $draftMatchesGuidance = data_get($draft?->facts, 'operator_guidance') === $question->draftGuidance();
     $categories = \App\Models\ProductQuestionAnalysis::CATEGORIES;
     $scopes = \App\Models\ProductQuestionAnalysis::SCOPES;
     $answerability = \App\Models\ProductQuestionAnalysis::ANSWERABILITY;
@@ -87,6 +88,9 @@
             <div class="box-header with-border"><h3 class="box-title">AI Draft（仅草稿）</h3></div>
             <div class="box-body">
                 @if($draft)
+                    @if(!$draftMatchesGuidance)
+                        <div class="alert alert-warning">指导补充已变化，下方为旧草稿，请重新生成。</div>
+                    @endif
                     <dl class="qa-kv">
                         <dt>状态</dt><dd>{{ $draft->status }}</dd>
                         <dt>意图</dt><dd>{{ implode('、', $draft->intents ?: []) ?: '—' }}</dd>
@@ -99,6 +103,9 @@
                         <dt>安全提示</dt><dd>{{ implode('；', $draft->safety_flags ?: []) ?: '无' }}</dd>
                         <dt>置信度</dt><dd>{{ $draft->confidence === null ? '—' : number_format($draft->confidence * 100, 1).'%' }}</dd>
                     </dl>
+                    @if($usedGuidance = data_get($draft->facts, 'operator_guidance.text'))
+                        <details><summary>本次生成使用的指导补充</summary><div class="qa-content">{{ $usedGuidance }}</div></details>
+                    @endif
                     @if($draft->answer())
                         <hr><strong>草稿内容</strong><div class="qa-content">{!! app(\App\Services\ProductQuestions\ProductQuestionReplyFormatter::class)->format($draft->answer()) !!}</div>
                     @endif
@@ -113,15 +120,23 @@
                         <p><strong>n8n Draft 正在{{ $draftRequest->status === 'queued' ? '排队' : '运行' }}</strong></p>
                         <p class="text-muted">请求 {{ $draftRequest->request_id }}@if($draftRequest->n8n_execution_id) · Execution {{ $draftRequest->n8n_execution_id }}@endif。该流程可能需要数分钟，本页会自动刷新。</p>
                     </div>
-                    <script>window.setTimeout(function () { window.location.reload(); }, 5000);</script>
+                    <script>window.setTimeout(function () { var guidance = document.getElementById('qa-draft-guidance'); if (!guidance || guidance.value === guidance.defaultValue) window.location.reload(); }, 5000);</script>
                 @elseif($draftRequest && in_array($draftRequest->status, ['failed', 'stale'], true))
                     <div class="callout callout-danger"><p><strong>n8n Draft {{ $draftRequest->status === 'stale' ? '已过期' : '失败' }}</strong></p><p>{{ $draftRequest->error_message }}</p></div>
                 @endif
                 <form method="post" action="{{ admin_url('product-questions/'.$question->external_id.'/generate-draft') }}">
                     @csrf<input type="hidden" name="site_id" value="{{ $site->id }}">
+                    @if($errors->has('draft_guidance'))<div class="alert alert-danger">{{ $errors->first('draft_guidance') }}</div>@endif
+                    <div class="form-group">
+                        <label for="qa-draft-guidance">指导补充 <span class="text-muted">（选填）</span></label>
+                        <textarea id="qa-draft-guidance" class="form-control" name="draft_guidance" rows="4" maxlength="10000" placeholder="例如：已向工厂确认，客户要求的裙长修改可以制作，不收取额外改款费用。">{{ old('draft_guidance', $question->draft_guidance) }}</textarea>
+                        <p class="help-block">填写已核实的业务结论或回复建议，并注明待确认事项；仅用于当前问题。生成时会一并保存，留空表示清除补充。</p>
+                        @if($question->draft_guidance_updated_at)<small class="text-muted">最近保存：{{ $question->draft_guidance_updated_at->format('Y-m-d H:i:s') }}</small>@endif
+                    </div>
+                    <button class="btn btn-default" type="submit" formaction="{{ admin_url('product-questions/'.$question->external_id.'/guidance') }}">保存指导补充</button>
                     <button class="btn btn-success" type="submit" @if($draftRequest && in_array($draftRequest->status, ['queued', 'running'], true)) disabled @endif><i class="fa fa-magic"></i> {{ $draft ? '检查并复用 Draft' : '通过 n8n 生成 Draft' }}</button>
                     @if($draft)<button class="btn btn-warning" type="submit" name="force" value="1" @if($draftRequest && in_array($draftRequest->status, ['queued', 'running'], true)) disabled @endif><i class="fa fa-refresh"></i> 强制重新生成</button>@endif
-                    <span class="text-muted" style="margin-left:8px">生成后仍需人工核对，并继续走 Preview → Confirm。</span>
+                    <span class="text-muted" style="margin-left:8px">修改补充后需重新生成；生成后仍需人工核对，并继续走 Preview → Confirm。</span>
                 </form>
             </div>
         </div>
@@ -132,7 +147,7 @@
                 @csrf<input type="hidden" name="site_id" value="{{ $site->id }}">
                 <div class="box-body">
                     @if($errors->any())<div class="alert alert-danger"><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
-                    <div class="form-group"><label>回答（HTML）</label><textarea id="qa-answer-source" class="form-control" name="answer" rows="8" required maxlength="100000">{{ old('answer', $draft?->status === 'generated' ? app(\App\Services\ProductQuestions\ProductQuestionReplyFormatter::class)->format($draft->answer() ?? '') : $question->answer) }}</textarea></div>
+                    <div class="form-group"><label>回答（HTML）</label><textarea id="qa-answer-source" class="form-control" name="answer" rows="8" required maxlength="100000">{{ old('answer', $draft?->status === 'generated' && $draftMatchesGuidance ? app(\App\Services\ProductQuestions\ProductQuestionReplyFormatter::class)->format($draft->answer() ?? '') : $question->answer) }}</textarea></div>
                     <div class="form-group"><label>实时效果预览</label>
                         <iframe id="qa-answer-preview" title="回答实时效果预览" sandbox="" style="display:block;width:100%;height:260px;border:1px solid #ddd;background:#fff"></iframe>
                         <p class="help-block">上方编辑 HTML，下方实时显示链接、段落和换行；点击“生成 Preview”后再核对修改差异。</p>
@@ -228,6 +243,14 @@
     </main>
 
     <aside>
+        <div class="box box-solid"><div class="box-body">
+            <form method="post" action="{{ admin_url('product-questions/'.$question->external_id.'/sync-product') }}">
+                @csrf
+                <input type="hidden" name="site_id" value="{{ $site->id }}">
+                <button class="btn btn-primary" type="submit" @disabled(trim((string) $question->sn) === '' || !$question->remote_present || $question->name === '__CSI_N8N_REPLAY__')><i class="fa fa-refresh"></i> 同步当前商品信息</button>
+                <p class="help-block">仅同步当前问题对应的商品（SN：{{ $question->sn ?: '—' }}），更新详情、图片和选项。</p>
+            </form>
+        </div></div>
         @if($productSnapshot)
             <div class="box box-success"><div class="box-header with-border">
                 <h3 class="box-title">产品上下文</h3>
@@ -244,7 +267,7 @@
                 </dl>
             </div></div>
         @else
-            <div class="callout callout-warning"><p>尚未同步产品上下文。运行 <code>php artisan product-questions:sync-products --site={{ $site->site_key }}</code>。</p></div>
+            <div class="callout callout-warning"><p>尚未同步产品上下文，请点击“同步当前商品信息”。</p></div>
         @endif
         <div class="box box-solid"><div class="box-header with-border"><h3 class="box-title">问答信息</h3></div><div class="box-body"><dl class="qa-kv">
             <dt>站点</dt><dd>{{ $site->name }}</dd><dt>QA ID</dt><dd>{{ $question->external_id }}</dd><dt>产品 SN</dt><dd>{{ $question->sn ?: '—' }}</dd><dt>产品</dt><dd>{{ $product['name'] ?? '—' }}</dd><dt>用户</dt><dd>{{ $question->name ?: '—' }}</dd><dt>邮箱</dt><dd>{{ $question->email ?: '—' }}</dd><dt>类型</dt><dd>{{ $question->type_text ?: '—' }}</dd><dt>回复状态</dt><dd>{{ $question->reply_status }}</dd><dt>处理状态</dt><dd>{{ $question->status_text ?: $question->status }}</dd><dt>回复来源</dt><dd>{{ $question->reply_source ?: '历史数据未记录' }}@if($question->reply_operator)<div>{{ $question->reply_operator['name'] ?? '—' }} · {{ $question->replied_at?->format('Y-m-d H:i:s') ?: '—' }}</div>@endif</dd>@if($question->close_reason)<dt>关闭原因</dt><dd>{{ $question->close_reason }}</dd>@endif<dt>展示</dt><dd>{{ $question->visible ? '是' : '否' }}</dd><dt>通知</dt><dd>{{ $question->notice_status_text ?: $question->notice_status }}</dd><dt>Helpful</dt><dd>{{ $question->helpful }}</dd><dt>创建时间</dt><dd>{{ optional($question->remote_created_at)->format('Y-m-d H:i:s') ?: '—' }}</dd><dt>同步时间</dt><dd>{{ optional($question->synced_at)->format('Y-m-d H:i:s') ?: '—' }}</dd>

@@ -31,7 +31,8 @@ class KnowledgeResolverTest extends TestCase
             ['production_order_status'],
         );
 
-        $this->assertSame([$article->id], $questionKnowledge->pluck('id')->all());
+        $process = KnowledgeArticle::where('key', 'qa_process_confirmed_order_requirements')->firstOrFail();
+        $this->assertEqualsCanonicalizing([$process->id, $article->id], $questionKnowledge->pluck('id')->all());
         $processIds = KnowledgeArticle::where('key', 'like', 'ticket_flow_%_v2')->pluck('id')->all();
         $this->assertEqualsCanonicalizing([$article->id, ...$processIds], $ticketKnowledge->pluck('id')->all());
     }
@@ -85,7 +86,8 @@ class KnowledgeResolverTest extends TestCase
             ['ask_payment'],
         );
 
-        $this->assertSame([$higher->id], $resolved->pluck('id')->all());
+        $process = KnowledgeArticle::where('key', 'qa_process_confirmed_order_requirements')->firstOrFail();
+        $this->assertEqualsCanonicalizing([$higher->id, $process->id], $resolved->pluck('id')->all());
     }
 
     private function article(string $key, ?string $siteKey = null, string $status = 'verified'): KnowledgeArticle

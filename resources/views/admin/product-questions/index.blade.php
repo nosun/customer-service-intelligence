@@ -22,12 +22,23 @@
 @if($sites->isEmpty())
     <div class="callout callout-info"><h4>尚未配置站点</h4><p>请先在<a href="{{ admin_url('commerce-sites/create') }}">站点配置</a>中填写 Admin API 地址和 Token。</p></div>
 @else
+    <div class="box box-primary"><div class="box-body">
+        <form id="qa-sync-form" action="{{ admin_url('product-questions/sync') }}" method="post" data-list-url="{{ admin_url('product-questions') }}">
+            @csrf
+            <div class="form-inline">
+                <label for="qa-sync-site">同步站点</label>
+                <select id="qa-sync-site" class="form-control" name="site_id">@foreach($sites as $option)<option value="{{ $option->id }}" @selected($site?->id === $option->id)>{{ $option->name }}</option>@endforeach</select>
+                <button class="btn btn-primary" type="submit"><i class="fa fa-refresh"></i> 同步问题</button>
+            </div>
+            <p class="help-block">同步所选站点的问题。同步期间请保持页面打开。</p>
+            <div id="qa-sync-result" role="status" aria-live="polite"></div>
+        </form>
+    </div></div>
     <div class="callout callout-{{ $site?->product_question_sync_status === 'failed' ? 'danger' : 'info' }}">
         <strong>{{ $site?->name }}</strong>
         · 同步状态：{{ $site?->product_question_sync_status ?: '尚未同步' }}
         · 最后成功：{{ $site?->product_questions_last_synced_at?->timezone('Asia/Shanghai')?->format('Y-m-d H:i:s') ?: '—' }}
         @if($site?->product_question_sync_error)<div>{{ $site->product_question_sync_error }}</div>@endif
-        <div class="qa-meta">命令：php artisan product-questions:sync --site={{ $site?->site_key }}</div>
     </div>
 
     <div class="qa-stats">
@@ -78,10 +89,38 @@
                     <td>{{ optional($question->remote_updated_at)->format('Y-m-d H:i:s') ?: '—' }}<div class="qa-meta">同步 {{ optional($question->synced_at)->diffForHumans() }}</div></td>
                 </tr>
             @empty
-                <tr><td colspan="7" class="text-center text-muted" style="padding:40px">尚无本地问答，请先运行同步命令。</td></tr>
+                <tr><td colspan="7" class="text-center text-muted" style="padding:40px">尚无本地问答，请选择站点并点击“同步问题”。</td></tr>
             @endforelse
             </tbody>
         </table></div>
         @if($questions->hasPages())<div class="box-footer clearfix">{{ $questions->links() }}</div>@endif
     </div>
 @endif
+
+@php
+\Encore\Admin\Facades\Admin::script(<<<'JS'
+$('#qa-sync-form').off('submit').on('submit', async function (event) {
+    event.preventDefault();
+    var form = $(this);
+    if (form.data('running')) return;
+    var siteId = form.find('[name="site_id"]').val();
+    var token = form.find('[name="_token"]').val();
+    var result = $('#qa-sync-result').empty();
+    var progress = $('<p>').appendTo(result);
+    form.data('running', true).find('button, select').prop('disabled', true);
+    progress.text('正在同步问题…');
+    try {
+        var response = await $.ajax({
+            url: form.attr('action'), method: 'POST', dataType: 'json',
+            data: {site_id: siteId, _token: token}
+        });
+        progress.text(response.message);
+        $('<a class="btn btn-default btn-sm">').attr('href', form.data('list-url') + '?site_id=' + encodeURIComponent(siteId)).text('查看最新问答').appendTo(result);
+    } catch (error) {
+        progress.addClass('text-danger').text(error.responseJSON?.message || '同步中断，请检查网络后重试。');
+    } finally {
+        form.data('running', false).find('button, select').prop('disabled', false);
+    }
+});
+JS);
+@endphp

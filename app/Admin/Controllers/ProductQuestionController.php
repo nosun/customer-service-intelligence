@@ -14,6 +14,7 @@ use App\Services\N8n\WorkflowRegistry;
 use App\Services\ProductQuestions\N8nProductQuestionDraftService;
 use App\Services\ProductQuestions\ProductQuestionDraftFeedbackRecorder;
 use App\Services\ProductQuestions\ProductQuestionDraftInput;
+use App\Services\TradeManager\ProductCatalogSyncService;
 use App\Services\TradeManager\ProductQuestionClient;
 use App\Services\TradeManager\ProductQuestionSyncService;
 use App\Services\TradeManager\TradeManagerApiException;
@@ -21,6 +22,7 @@ use App\Services\Work\ProductQuestionWorkItemManager;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Layout\Content;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -49,6 +51,44 @@ class ProductQuestionController extends Controller
                 'filters' => $request->query(),
                 'counts' => $site ? $this->counts($site) : [],
             ]));
+    }
+
+    public function syncQuestions(Request $request, ProductQuestionSyncService $sync): JsonResponse
+    {
+        $data = $request->validate(['site_id' => ['required', 'integer']]);
+        $site = CommerceSite::query()->where('enabled', true)->findOrFail($data['site_id']);
+
+        try {
+            $result = $sync->sync($site);
+
+            return response()->json(['message' => "问题同步完成：保存 {$result['records_saved']} 条。"]);
+        } catch (Throwable $exception) {
+            return response()->json(['message' => $this->message($exception)], 502);
+        }
+    }
+
+    public function syncProduct(Request $request, int $questionId, ProductCatalogSyncService $sync): RedirectResponse
+    {
+        $data = $request->validate(['site_id' => ['required', 'integer']]);
+        $site = CommerceSite::query()->where('enabled', true)->findOrFail($data['site_id']);
+        $question = ProductQuestion::query()->withoutReplay()
+            ->where('commerce_site_id', $site->id)
+            ->where('external_id', $questionId)
+            ->where('remote_present', true)
+            ->firstOrFail();
+        $sn = trim((string) $question->sn);
+        if ($sn === '') {
+            admin_toastr('当前问题没有商品 SN，无法同步。', 'warning');
+        } else {
+            $result = $sync->sync($site, $sn);
+            if ($result['status'] === 'completed') {
+                admin_toastr('当前商品信息同步完成。', 'success');
+            } else {
+                admin_toastr('当前商品同步失败，请检查站点连接后重试。', 'error');
+            }
+        }
+
+        return redirect(admin_url("product-questions/{$questionId}?site_id={$site->id}"));
     }
 
     public function show(
@@ -83,6 +123,37 @@ class ProductQuestionController extends Controller
             ->body(view('admin.product-questions.show', compact('site', 'question', 'preview', 'productSnapshot', 'draft', 'draftRequest')));
     }
 
+    public function saveGuidance(Request $request, int $questionId): RedirectResponse
+    {
+        $validated = $request->validate([
+            'site_id' => ['required', 'integer'],
+            'draft_guidance' => ['present', 'nullable', 'string', 'max:10000'],
+        ]);
+        $site = CommerceSite::query()->where('enabled', true)->findOrFail($validated['site_id']);
+        $question = ProductQuestion::query()
+            ->where('commerce_site_id', $site->id)
+            ->where('external_id', $questionId)
+            ->firstOrFail();
+        $this->updateGuidance($question, $validated['draft_guidance']);
+        admin_toastr('指导补充已保存，下次生成时使用。', 'success');
+
+        return redirect(admin_url("product-questions/{$questionId}?site_id={$site->id}"));
+    }
+
+    private function updateGuidance(ProductQuestion $question, ?string $text): void
+    {
+        $text = trim((string) $text);
+        $text = $text === '' ? null : $text;
+        if ($question->draft_guidance === $text) {
+            return;
+        }
+        $question->update([
+            'draft_guidance' => $text,
+            'draft_guidance_updated_by' => Admin::user()->id,
+            'draft_guidance_updated_at' => now(),
+        ]);
+    }
+
     public function generateDraft(
         Request $request,
         int $questionId,
@@ -94,6 +165,7 @@ class ProductQuestionController extends Controller
         $validated = $request->validate([
             'site_id' => ['required', 'integer'],
             'force' => ['sometimes', 'boolean'],
+            'draft_guidance' => ['sometimes', 'nullable', 'string', 'max:10000'],
         ]);
         $site = CommerceSite::query()->where('enabled', true)->findOrFail($request->integer('site_id'));
         $question = ProductQuestion::query()
@@ -104,6 +176,9 @@ class ProductQuestionController extends Controller
             admin_toastr('只有仍在线且尚未回复的问题可以生成 Draft。', 'warning');
 
             return back();
+        }
+        if (array_key_exists('draft_guidance', $validated)) {
+            $this->updateGuidance($question, $validated['draft_guidance']);
         }
         try {
             $workflows->active(N8nProductQuestionDraftService::WORKFLOW_KEY, N8nProductQuestionDraftService::WORKFLOW_VERSION);
@@ -136,7 +211,7 @@ class ProductQuestionController extends Controller
                 'finished_at' => now(),
             ]);
             $workItems->attach($reusedRequest);
-            admin_toastr('问题、商品、Policy 和工作流输入均未变化，已复用现有 Draft。', 'info');
+            admin_toastr('问题、指导补充、商品、Policy 和工作流输入均未变化，已复用现有 Draft。', 'info');
 
             return redirect(admin_url("product-questions/{$questionId}?site_id={$site->id}"));
         }

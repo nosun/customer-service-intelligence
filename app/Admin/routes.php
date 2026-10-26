@@ -55,8 +55,11 @@ Route::group([
     $router->get('commerce-sites/{commerceSite}/edit', [CommerceSiteController::class, 'edit'])->name('commerce-sites.edit');
     $router->put('commerce-sites/{commerceSite}', [CommerceSiteController::class, 'update'])->name('commerce-sites.update');
     $router->get('product-questions', [ProductQuestionController::class, 'index'])->name('product-questions.index');
+    $router->post('product-questions/sync', [ProductQuestionController::class, 'syncQuestions'])->name('product-questions.sync');
+    $router->post('product-questions/{questionId}/sync-product', [ProductQuestionController::class, 'syncProduct'])->name('product-questions.sync-product');
     $router->get('product-questions/{questionId}', [ProductQuestionController::class, 'show'])->name('product-questions.show');
     $router->post('product-questions/{questionId}/generate-draft', [ProductQuestionController::class, 'generateDraft'])->name('product-questions.generate-draft');
+    $router->post('product-questions/{questionId}/guidance', [ProductQuestionController::class, 'saveGuidance'])->name('product-questions.guidance');
     $router->post('product-questions/{questionId}/preview-reply', [ProductQuestionController::class, 'previewReply'])->name('product-questions.preview-reply');
     $router->post('product-questions/{questionId}/confirm-reply', [ProductQuestionController::class, 'confirmReply'])->name('product-questions.confirm-reply');
     $router->post('product-questions/{questionId}/review', [ProductQuestionController::class, 'review'])->name('product-questions.review');
