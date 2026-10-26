@@ -54,6 +54,11 @@ class PublishKnowledgeResearch extends Command
             return self::INVALID;
         }
         $existing = KnowledgeArticle::where('key', $scenario)->first();
+        if ($existing !== null && $existing->versions()->exists()) {
+            $this->error('此知识已启用版本审核，请在知识工作台创建候选版本；旧研究发布命令不能覆盖。');
+
+            return self::FAILURE;
+        }
         if ($existing?->status === 'verified' && $status === 'observed') {
             $this->error('不能用 observed 候选覆盖 verified 知识。');
 

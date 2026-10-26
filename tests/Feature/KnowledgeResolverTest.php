@@ -32,7 +32,8 @@ class KnowledgeResolverTest extends TestCase
         );
 
         $this->assertSame([$article->id], $questionKnowledge->pluck('id')->all());
-        $this->assertSame([$article->id], $ticketKnowledge->pluck('id')->all());
+        $processIds = KnowledgeArticle::where('key', 'like', 'ticket_flow_%_v2')->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$article->id, ...$processIds], $ticketKnowledge->pluck('id')->all());
     }
 
     public function test_resolver_enforces_status_channel_site_and_enabled_binding(): void

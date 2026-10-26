@@ -7,6 +7,33 @@ use Tests\TestCase;
 
 class N8nWorkflowDefinitionTest extends TestCase
 {
+    public function test_ticket_plan_normalizes_customer_text_without_discarding_supported_intent(): void
+    {
+        $workflow = json_decode(file_get_contents(base_path('n8n/workflows/work__ticket-draft-v1.json')), true, flags: JSON_THROW_ON_ERROR);
+        $code = collect($workflow['nodes'])->keyBy('name')['Normalize Ticket Plan']['parameters']['jsCode'];
+        foreach (['text', 'customer_text', 'missing'] as $field) {
+            $clause = ['intent' => 'refund_review'];
+            if ($field !== 'missing') {
+                $clause[$field] = 'I want to return this dress';
+            }
+            $plan = ['clauses' => [$clause], 'policy_keys' => ['ticket_order_action_review_process'], 'unsupported_requests' => []];
+            $script = 'const $input = {first: () => ({json: {output: '.json_encode($plan).'}})};'
+                .'const $ = () => ({first: () => ({json: {context: {ticket: {messages: [{role: "customer", text: "I want to return this dress"}]}}}})});'
+                .'process.stdout.write(JSON.stringify((new Function("$", "$input", '.json_encode($code).'))($, $input)[0].json.output));';
+            $process = new Process(['node', '-e', $script]);
+            $process->mustRun();
+            $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            if ($field === 'missing') {
+                $this->assertSame('unsupported', $result['clauses'][0]['intent']);
+                $this->assertNotEmpty($result['unsupported_requests']);
+            } else {
+                $this->assertSame('I want to return this dress', $result['clauses'][0]['text']);
+                $this->assertSame('refund_review', $result['clauses'][0]['intent']);
+                $this->assertSame([], $result['unsupported_requests']);
+            }
+        }
+    }
+
     public function test_consultation_scope_requires_a_verified_channel_and_a_hidden_reply(): void
     {
         $workflow = json_decode(file_get_contents(base_path('n8n/workflows/work__qa-draft-agent-v1.json')), true, flags: JSON_THROW_ON_ERROR);

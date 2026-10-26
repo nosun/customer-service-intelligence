@@ -23,6 +23,7 @@ return [
         'base_url' => env('CONSOLE_NEW_API_URL'),
         'token' => env('CONSOLE_NEW_API_TOKEN'),
         'timeout' => (int) env('CONSOLE_NEW_API_TIMEOUT', 15),
+        'ticket_actions_enabled' => (bool) env('CONSOLE_NEW_TICKET_ACTIONS_ENABLED', false),
     ],
 
     'draft_ai' => [
@@ -52,6 +53,8 @@ return [
         'analysis_internal_api_token' => env('N8N_ANALYSIS_INTERNAL_API_TOKEN'),
         'base_url' => env('N8N_BASE_URL', 'http://127.0.0.1:5678'),
         'draft_webhook_path' => env('N8N_DRAFT_WEBHOOK_PATH', '/webhook/product-question-draft-v1'),
+        'ticket_investigation_enabled' => env('N8N_TICKET_INVESTIGATION_ENABLED', false),
+        'ticket_investigation_webhook_path' => env('N8N_TICKET_INVESTIGATION_WEBHOOK_PATH', '/webhook/ticket-draft-v2'),
         'ticket_draft_webhook_path' => env('N8N_TICKET_DRAFT_WEBHOOK_PATH', '/webhook/ticket-draft-v1'),
         'webhook_token' => env('N8N_WEBHOOK_TOKEN'),
         'trigger_timeout' => (int) env('N8N_TRIGGER_TIMEOUT', 10),

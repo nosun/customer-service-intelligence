@@ -27,12 +27,12 @@ class ConsoleNewClient
     }
 
     /** @return array{items: list<array<string, mixed>>, pagination: array<string, int>, request_id: ?string, response_hash: string} */
-    public function findOrdersByEmail(string $email, int $pageSize = 10): array
+    public function findOrdersByEmail(string $email, int $pageSize = 10, int $page = 1): array
     {
         $this->assertConfigured();
         $response = $this->request()->get('orders', [
             'customer_email' => $email,
-            'page' => 1,
+            'page' => $page,
             'page_size' => max(1, min($pageSize, 100)),
         ]);
         $payload = $response->json();
@@ -56,12 +56,12 @@ class ConsoleNewClient
     }
 
     /** @return array{items: list<array<string, mixed>>, pagination: array<string, int>, request_id: ?string, response_hash: string} */
-    public function workOrders(string $orderNumber, int $pageSize = 100): array
+    public function workOrders(string $orderNumber, int $pageSize = 100, int $page = 1): array
     {
         $this->assertConfigured();
         $response = $this->request()->get('work-orders', [
             'order_no' => $orderNumber,
-            'page' => 1,
+            'page' => $page,
             'page_size' => max(1, min($pageSize, 100)),
         ]);
         $payload = $response->json();
@@ -114,6 +114,24 @@ class ConsoleNewClient
             'request_id' => $requestId,
             'response_hash' => $hash,
         ];
+    }
+
+    /** Only cancellation and standard-size updates are exposed; no refund writes. */
+    public function updateOrder(string $number, array $payload, ?int $itemId = null): array
+    {
+        $this->assertConfigured();
+        $changes = $payload['changes'] ?? [];
+        if ($itemId === null ? $changes !== ['order_status' => -1] : (array_keys($changes) !== ['size'] || ! is_string($changes['size']))) {
+            throw new ConsoleNewApiException('Unsupported Ticket order action.', errorCode: 'UNSUPPORTED_ACTION');
+        }
+        $path = 'orders/'.rawurlencode($number).($itemId === null ? '' : '/items/'.$itemId);
+        $response = $this->request()->patch($path, [...$payload, 'send_email' => 0]);
+        $data = $response->json();
+        if (! $response->successful() || data_get($data, 'success') !== true || ! is_array(data_get($data, 'data'))) {
+            throw $this->exception($response, $data, data_get($data, 'request_id'));
+        }
+
+        return ['data' => $data['data'], 'request_id' => $data['request_id'] ?? null];
     }
 
     private function request(): PendingRequest

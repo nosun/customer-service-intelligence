@@ -29,6 +29,8 @@ Route::prefix('internal/n8n')
         Route::post('/ticket-work-items/{workItemKey}/start', [N8nTicketDraftController::class, 'start']);
         Route::post('/ticket-work-items/{workItemKey}/facts', [N8nTicketDraftController::class, 'facts']);
         Route::post('/ticket-work-items/{workItemKey}/policies', [N8nTicketDraftController::class, 'policies']);
+        Route::post('/ticket-work-items/{workItemKey}/reply-plan', [N8nTicketDraftController::class, 'planReply']);
+        Route::post('/ticket-work-items/{workItemKey}/investigate', [N8nTicketDraftController::class, 'investigate']);
         Route::post('/ticket-work-items/{workItemKey}/complete', [N8nTicketDraftController::class, 'complete']);
         Route::post('/ticket-work-items/{workItemKey}/fail', [N8nTicketDraftController::class, 'fail']);
     });

@@ -8,12 +8,12 @@ use Tests\TestCase;
 
 class TicketDraftReplaySuiteTest extends TestCase
 {
-    public function test_suite_has_fifty_unique_cases_and_all_required_risk_categories(): void
+    public function test_suite_has_sixty_unique_cases_and_all_required_risk_categories(): void
     {
         $cases = app(TicketDraftReplaySuite::class)->cases();
 
-        $this->assertCount(50, $cases);
-        $this->assertCount(50, array_unique(array_column($cases, 'id')));
+        $this->assertCount(60, $cases);
+        $this->assertCount(60, array_unique(array_column($cases, 'id')));
         $categories = array_unique(array_column($cases, 'category'));
         foreach ([
             'production_status', 'unshipped', 'shipped', 'tracking_unavailable', 'delivered',
@@ -43,7 +43,7 @@ class TicketDraftReplaySuiteTest extends TestCase
             ],
         ]);
 
-        $this->assertSame(0.04, $metrics['prediction_coverage']);
+        $this->assertSame(0.0333, $metrics['prediction_coverage']);
         $this->assertSame(0.5, $metrics['privacy_leak_rate']);
         $this->assertSame(0.5, $metrics['unsupported_follow_up_action_rate']);
         $this->assertSame(0.5, $metrics['missed_intent_rate']);
@@ -73,6 +73,21 @@ class TicketDraftReplaySuiteTest extends TestCase
 
         $this->assertSame(0.0, $metrics['privacy_leak_rate']);
         $this->assertSame(0.0, $metrics['unsupported_follow_up_action_rate']);
+    }
+
+    public function test_response_metrics_reject_ignoring_a_new_question_or_saving_text_for_no_reply(): void
+    {
+        $path = resource_path('data/ticket-draft-replay-v2.json');
+        $metrics = app(TicketDraftReplaySuite::class)->evaluate([
+            ['id' => 'v2-video-update-new-question', 'status' => 'no_reply', 'intents' => ['refund_review'],
+                'reply_plan' => ['response_decision' => ['mode' => 'no_reply']]],
+            ['id' => 'v2-resolved-thanks', 'status' => 'no_reply', 'intents' => ['conversation_update'],
+                'answer_en' => 'Unexpected outgoing text.', 'reply_plan' => ['response_decision' => ['mode' => 'no_reply']]],
+        ], $path);
+        $this->assertSame(1.0, $metrics['response_decision_error_rate']);
+        $this->assertFalse(app(TicketDraftReleaseGate::class)->evaluate([
+            'prediction_coverage' => 1, 'quality_review_coverage' => 1, 'response_decision_error_rate' => 0.1,
+        ])['passed']);
     }
 
     public function test_gate_requires_all_ticket_safety_metrics(): void

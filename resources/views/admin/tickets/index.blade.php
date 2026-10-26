@@ -22,6 +22,8 @@
     @media (max-width: 760px) { .ticket-workbench { grid-template-columns: 1fr; } .filter-grid { grid-template-columns: 1fr; } }
 </style>
 
+@if(in_array(data_get(\Illuminate\Support\Facades\Cache::get('helpdesk:sync-state'), 'status'), ['queued', 'running'], true))<meta http-equiv="refresh" content="5">@endif
+
 <div class="ticket-workbench">
     <aside class="box box-solid">
         <div class="box-header with-border"><h3 class="box-title">队列</h3></div>
@@ -64,6 +66,13 @@
     </aside>
 
     <main>
+        @php($syncState = \Illuminate\Support\Facades\Cache::get('helpdesk:sync-state', []))
+        <div class="box box-solid"><div class="box-body">
+            <form method="post" action="{{ admin_url('conversations/sync') }}" style="display:inline-block">@csrf
+                <button class="btn btn-primary" @disabled(in_array($syncState['status'] ?? null, ['queued', 'running'], true))><i class="fa fa-refresh"></i> 立即同步 Ticket</button>
+            </form>
+            <span class="text-muted">{{ ['queued' => '等待同步', 'running' => '正在同步', 'completed' => '最近同步完成', 'failed' => '同步失败，请查看账户同步错误'][$syncState['status'] ?? ''] ?? '复用现有定时增量同步' }} · 不修改 HelpDesk</span>
+        </div></div>
         <div class="box box-primary">
             <div class="box-body">
                 <form method="get" action="{{ admin_url('conversations') }}" class="filter-grid">
@@ -86,7 +95,7 @@
             </div>
             <div class="box-body table-responsive no-padding">
                 <table class="table table-hover ticket-table">
-                    <thead><tr><th>Ticket</th><th>站点 / 分类</th><th>状态</th><th>Decision Case</th><th>更新时间</th></tr></thead>
+                    <thead><tr><th>Ticket</th><th>站点 / 分类</th><th>状态</th><th>Decision Case</th><th>智能辅助</th><th>更新时间</th></tr></thead>
                     <tbody>
                     @forelse ($tickets as $ticket)
                         <tr>
@@ -105,11 +114,12 @@
                                     <span class="text-muted">未生成</span>
                                 @endif
                             </td>
+                            <td>{{ app(\App\Services\TicketWork\TicketAssistanceView::class)->present($ticket, $ticket->runtimeCaseSource?->customerCase?->workItems->first())['label'] }}</td>
                             @php($lastActivity = $ticket->last_message_at ?: $ticket->updated_at_external)
                             <td>@if($lastActivity)<time datetime="{{ $lastActivity->toIso8601String() }}" title="{{ $lastActivity->timezone('Asia/Shanghai')->format('Y-m-d H:i:s') }}">{{ $lastActivity->diffForHumans() }}</time>@else — @endif</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted" style="padding: 40px">没有符合条件的 Ticket</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted" style="padding: 40px">没有符合条件的 Ticket</td></tr>
                     @endforelse
                     </tbody>
                 </table>

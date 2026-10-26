@@ -25,6 +25,10 @@ class WorkflowReleaseGateRegistry
                 'gate' => $this->tickets,
                 'suite_path' => resource_path('data/ticket-draft-replay-v1.json'),
             ],
+            'work/ticket-draft-v2' => [
+                'gate' => $this->tickets,
+                'suite_path' => resource_path('data/ticket-draft-replay-v2.json'),
+            ],
             default => throw new RuntimeException("No release gate is registered for workflow: {$workflowKey}"),
         };
     }

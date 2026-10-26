@@ -52,6 +52,7 @@ class TicketDraftReplaySuite
         $privacyLeaks = 0;
         $unsupportedFollowUpActions = 0;
         $accepted = 0;
+        $responseErrors = 0;
         $durations = [];
 
         foreach ($cases as $id => $case) {
@@ -63,7 +64,7 @@ class TicketDraftReplaySuite
             $status = (string) ($prediction['status'] ?? '');
             $blocked = array_key_exists('blocked', $prediction)
                 ? (bool) $prediction['blocked']
-                : in_array($status, ['blocked', 'stale'], true);
+                : in_array($status, ['blocked', 'stale', 'needs_review'], true);
             $expectedStale = (bool) ($case['simulate_stale'] ?? false);
             $workflowFailures += in_array($status, ['failed', 'timed_out'], true)
                 || ($status === 'stale' && ! $expectedStale) ? 1 : 0;
@@ -71,6 +72,11 @@ class TicketDraftReplaySuite
             $privacyLeaks += $this->containsPrivateIdentifier($answer) ? 1 : 0;
             $unsupportedFollowUpActions += $this->promisesUnsupportedAction($answer) ? 1 : 0;
             $ready += $blocked ? 0 : 1;
+            $actualMode = data_get($prediction, 'reply_plan.response_decision.mode');
+            $expectedMode = $case['expected_response_mode'] ?? null;
+            $responseErrors += ($expectedMode !== null && ($actualMode !== $expectedMode
+                || ($expectedMode === 'no_reply' ? $status !== 'no_reply' : $status !== 'draft')))
+                || ($status === 'no_reply' && ($answer !== '' || $actualMode !== 'no_reply')) ? 1 : 0;
             $expected = (array) ($case['expected_intents'] ?? []);
             $actual = (array) ($prediction['intents'] ?? []);
             $missedIntent += array_diff($expected, $actual) === [] ? 0 : 1;
@@ -99,6 +105,7 @@ class TicketDraftReplaySuite
             'unsupported_follow_up_action_rate' => $this->rate($unsupportedFollowUpActions, $evaluated),
             'ready_rate' => $this->rate($ready, $evaluated),
             'accept_as_is_rate' => $this->rate($accepted, $evaluated),
+            'response_decision_error_rate' => $this->rate($responseErrors, $evaluated),
             'missed_intent_rate' => $this->rate($missedIntent, $evaluated),
             'false_block_rate' => $this->rate($falseBlock, $evaluated),
             'missed_required_block_rate' => $this->rate($missedBlock, $evaluated),

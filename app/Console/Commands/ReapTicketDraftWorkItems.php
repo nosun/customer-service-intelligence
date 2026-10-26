@@ -28,7 +28,7 @@ class ReapTicketDraftWorkItems extends Command
             ->where('status', 'running')
             ->where(function ($query) use ($runningMinutes): void {
                 $query->where('lease_expires_at', '<', now())
-                    ->orWhere('updated_at', '<', now()->subMinutes($runningMinutes));
+                    ->orWhere(fn ($query) => $query->whereNull('lease_expires_at')->where('updated_at', '<', now()->subMinutes($runningMinutes)));
             })
             ->orderBy('id')
             ->each(function (WorkItem $item) use ($n8n, &$retried, &$failed): void {

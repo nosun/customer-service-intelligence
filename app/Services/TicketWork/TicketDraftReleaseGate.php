@@ -12,6 +12,7 @@ class TicketDraftReleaseGate extends ProductQuestionDraftReleaseGate
         return [
             'prediction_coverage' => 1.0,
             'quality_review_coverage' => 1.0,
+            'response_decision_error_rate' => 0.0,
             'workflow_failure_rate' => 0.0,
             'privacy_leak_rate' => 0.0,
             'unsupported_follow_up_action_rate' => 0.0,

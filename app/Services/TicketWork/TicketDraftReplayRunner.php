@@ -126,6 +126,8 @@ class TicketDraftReplayRunner
                     'knowledge_articles' => $result['knowledge_articles'] ?? [],
                     'facts' => $result['facts'] ?? [],
                     'missing_facts' => $result['missing_facts'] ?? [],
+                    'reply_plan' => $result['reply_plan'] ?? null,
+                    'review' => $result['review'] ?? [],
                     'safety_flags' => $result['safety_flags'] ?? [],
                     'duration_ms' => $this->duration($item),
                     'work_item_key' => $item->work_item_key,
@@ -162,6 +164,8 @@ class TicketDraftReplayRunner
             'site_key' => (string) ($case['site_key'] ?? 'dressafford.com'),
             'requester_email' => (string) data_get($case, 'fixture.requester_email', 'replay-customer@example.invalid'),
             'requester_snapshot' => ['name' => 'Replay Customer'],
+            'draft_guidance' => $case['draft_guidance'] ?? null,
+            'draft_guidance_updated_at' => isset($case['draft_guidance']) ? now() : null,
             'subject' => (string) ($case['subject'] ?? 'Order status question'),
             'silo' => 'replay',
             'status' => 'open',
@@ -171,7 +175,13 @@ class TicketDraftReplayRunner
             'updated_at_external' => now(),
             'last_message_at' => now(),
         ]);
-        $this->message($conversation, (string) $case['question'], now()->subSecond());
+        if (isset($case['prior_agent_reply'])) {
+            $this->message($conversation, (string) $case['prior_agent_reply'], now()->subSeconds(4), 'agent');
+        }
+        $this->message($conversation, (string) $case['question'], now()->subSeconds(3));
+        if (isset($case['last_agent_reply'])) {
+            $this->message($conversation, (string) $case['last_agent_reply'], now()->subSeconds(2), 'agent');
+        }
         ConversationAnalysis::query()->create([
             'conversation_id' => $conversation->id,
             'primary_category' => 'replay_hint_only',
@@ -184,14 +194,14 @@ class TicketDraftReplayRunner
         return $conversation->load('analysis');
     }
 
-    private function message(Conversation $conversation, string $body, $occurredAt): void
+    private function message(Conversation $conversation, string $body, $occurredAt, string $author = 'client'): void
     {
         ConversationEvent::query()->create([
             'conversation_id' => $conversation->id,
             'external_id' => (string) Str::uuid(),
             'event_type' => 'message',
             'occurred_at' => $occurredAt,
-            'author_type' => 'client',
+            'author_type' => $author,
             'is_private' => false,
             'body_text' => $body,
             'content_hash' => hash('sha256', $body.'|'.Str::uuid()),

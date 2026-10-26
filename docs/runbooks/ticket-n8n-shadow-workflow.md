@@ -29,10 +29,15 @@ Conversation 历史副本
 
 Workflow：`work/ticket-draft-v1@1.0.0`
 
-当前只支持：
+本地候选定义支持（在线实例须重新注册、导入和验收）：
 
 - `production_order_status`：当前订单及生产进度；
-- `logistics_tracking_delivery`：当前发货、物流和交付进度。
+- `logistics_tracking_delivery`：当前发货、物流和交付进度；
+- `production_cancellation`：当前取消状态与核查建议；
+- `standard_size_change`：标准尺码澄清与记录状态；
+- `refund_review`：只读退款记录核查与建议。
+
+新增三类需先在 Ticket 详情点击“核查处理建议”，并有明确绑定该意图的已核准知识。已发布的核查流程文章不能代替财务资格政策。当前 Ticket 回复指南参与输入指纹及独立审核，冲突或过期时阻断。
 
 其他诉求必须进入 `unsupported_requests`，最终 Draft 标记为 `blocked`。Workflow 处于 `evaluating`，只允许 shadow 运行：
 
@@ -81,7 +86,7 @@ php artisan n8n:register-workflow \
 
 ## 固定回放与发布门禁
 
-Ticket Workflow 使用独立的 50 条固定回放集：
+Ticket Workflow 使用独立的 60 条固定回放集：
 
 ```text
 resources/data/ticket-draft-replay-v1.json
@@ -104,7 +109,7 @@ php artisan tickets:import-draft-replay-review \
   storage/app/ticket-draft-replays/n8n-predictions-YYYYmmdd-HHMMSS.json
 ```
 
-在 `/admin/workflow-replay-reviews` 逐条审核事实错误和 Policy 违规。全部 50 条完成审核后才可运行门禁。门禁要求预测与人工审核覆盖率均为 100%，Workflow 失败、事实错误、Policy 违规、隐私泄露、虚构后续动作和错误放行均为 0，漏意图率不超过 2%。
+在 `/admin/workflow-replay-reviews` 逐条审核事实错误和 Policy 违规。全部 60 条完成审核后才可运行门禁。门禁要求预测与人工审核覆盖率均为 100%，Workflow 失败、事实错误、Policy 违规、隐私泄露、虚构后续动作和错误放行均为 0，漏意图率不超过 2%。
 
 命令行门禁也可用于 CI 或发布准备：
 
@@ -122,10 +127,64 @@ Workflow 激活必须提供与 Ticket Workflow 定义及 Ticket 回放集 checks
 
 进入 `active` 前至少完成：
 
-1. 50 条固定回放，覆盖订单进度、未发货、已发货、物流异常、多意图、缺失订单号、多订单号、身份不匹配和不支持的取消/退款请求；
+1. 60 条固定回放，覆盖订单进度、未发货、已发货、物流异常、多意图、缺失订单号、多订单号、身份不匹配和不支持的取消/退款请求；
 2. 人工逐条审核 Fact 错误、Policy 违规、隐私泄露、遗漏意图、虚构后续动作和是否可直接采用；
 3. Workflow 失败、Fact 错误、Policy 违规、隐私泄露和虚构动作均为 0；
 4. 必须阻断的案例全部阻断；
 5. 完成当前活跃 Ticket 的 shadow 验收，仍不发送 HelpDesk。
 
 HelpDesk Preview/Confirm/Send 是后续独立发布项；没有确认 API 能力前，不应把本地 Draft 状态解释为已发送。
+
+工作台入口与执行边界见 [Ticket 订单处理工作台](../architecture/ticket-order-actions-workflow.md#13-当前交付与启用边界)。AI 工作流仍只有读取事实与保存本地草稿的权限，取消/改码的独立服务端执行框架默认关闭；退款和 HelpDesk 发送未开放。
+
+
+## v2：按业务阶段调查与模板生成
+
+候选定义：`n8n/workflows/work__ticket-draft-v2.json`；独立回放：`resources/data/ticket-draft-replay-v2.json`。不要用 v1 的固定输出预期评价 v2；新版覆盖售前、售中、售后及人工决定。
+
+```bash
+php artisan migrate
+php artisan n8n:register-workflow work/ticket-draft-v2 2.0.0 n8n/workflows/work__ticket-draft-v2.json --status=evaluating --prompt-version=ticket-investigation-v2
+```
+
+导入 v2 并启用其独立 `/webhook/ticket-draft-v2` 后，后台候选使用以下配置：
+
+```dotenv
+N8N_TICKET_INVESTIGATION_ENABLED=true
+N8N_TICKET_INVESTIGATION_WEBHOOK_PATH=/webhook/ticket-draft-v2
+```
+
+如配置已缓存，按现有本地启动方式刷新配置。设置 `N8N_TICKET_INVESTIGATION_ENABLED=false` 可回到 v1，保留 v2 草稿和历史，不删除知识或审计记录。
+
+```bash
+php artisan tickets:run-n8n-draft-replay --workflow-key=work/ticket-draft-v2 --workflow-version=2.0.0 --suite=resources/data/ticket-draft-replay-v2.json --case=v2-12067 --case=v2-size-completed --case=v2-donation-arranged --case=v2-factory-followup --case=v2-consultation
+```
+
+去掉 `--case` 可运行完整 v2 回放。冻结数据只作为本地合成验证，不代表真实工厂/银行状态。候选启用仍须完成整套回放和人工审核；发布门禁使用 `--workflow-key=work/ticket-draft-v2 --workflow-version=2.0.0 --workflow-file=n8n/workflows/work__ticket-draft-v2.json --suite=resources/data/ticket-draft-replay-v2.json`。
+
+日常模板维护在统一知识库 `ticket_flow_*_v2` 的 `reply_templates`；先保存 Draft，再审核发布。流程与模板版本随草稿记录。缺模板可以保留为受控草稿，缺事实不能通过套模板补全。售前没有订单时可直接生成；售中和售后涉及订单事实时，由生成链路按需核查。
+
+
+### 2026-10-22 本地实现验证
+
+v2 新增独立 74 条冻结回放定义。已执行定向真实 n8n 回放，覆盖取消决定、客户拒绝取消、改码结果、W 系列澄清、捐赠退款、工厂补充回复、售前咨询、投诉及跨阶段请求；整套 74 条及人工审核尚未全部完成，注册状态保留 `evaluating`。
+
+原会话 12067 当前已经 `closed`，按工作区规则未对它重新启动生成，也没有更改其状态。该问题的复现和验收使用隔离冻结案例 `v2-12067`；结果不能当成原订单重新核查或执行证明。
+
+真实回放发现的结构化答复要点已在接口边界规范化，并保留 `raw_reply_plan`；无法识别的结构继续报错，不将内容静默丢弃或当作审核通过。候选更新期间输入指纹变化会使运行中任务变为 `stale`，须在输入稳定后定向重跑。
+
+最终本地自动化验证：Feature 236 条、1,410 个断言；Unit 60 条、383 个断言，均通过。真实 n8n 定向回放覆盖 10 个不同场景，修复后结果为 9 个 `draft`、1 个按预期 `blocked`（客户拒绝取消）；这不是完整发布门禁报告。
+
+修复后的重点结果：`v2-12067` 使用将办理取消的措辞，不反问客户是否取消；W 系列尺寸保持必要澄清；跨阶段请求分别回答投诉与商品能力问题；Afterpay 捐赠退款保留未来办理措辞，并明确不能确认剩余分期已取消。否定句和分期状态不再被后端误判为已经安排退款或已经取消订单。
+
+回放证据保存在 `storage/app/ticket-draft-replays/investigation-v2-acceptance.json`、`investigation-v2-boundaries.json` 和 `investigation-v2-final-boundaries.json`。前两份包含修复前结果；W 系列以 boundaries 的定向重跑为准，跨阶段请求以 final-boundaries 为准。默认入口不自动切换，需完成完整回放和人工审核后按上述配置启用。
+
+### 回应判断增量（2026-10-22）
+
+详见 [回应判断架构复核](../architecture/ticket-response-assessment.md)。v2 评估输出增加 `case_progress` 与 `response_decision`。实质回复和简短确认继续保存待人工审核的本地草稿；暂不回复经过独立审核后，保存 `draft_status=no_reply`，`draft_id=null`。审核不通过保存 `needs_review`，不创建空邮件、不关闭 Ticket、不自动创建提醒。
+
+模板之外，后台显示当前进度、等待对象、下一步及关联会话来源。新消息或关联历史变化后，旧草稿和旧等待建议均显示过期。关联指南仅是历史证据，当前指南仍须客服明确填写。
+
+冻结回放现在为 78 条。定向实测记录：`storage/app/ticket-draft-replays/response-assessment-v2.json`（四种新增场景）及 `response-assessment-cancellation.json`（取消回归）。回放的 `prior_agent_reply` 表示本次客户回复之前的已发信；原有 `last_agent_reply` 继续表示客户问题之后、等待客服补充指南的跟进场景。
+
+增加门禁指标 `response_decision_error_rate=0`，使用固定案例预期判断，不依赖模型自报审核通过。正式发布仍须覆盖全部案例并完成人工事实/政策审核。

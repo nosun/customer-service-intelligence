@@ -1,0 +1,260 @@
+{
+  "synthetic": true,
+  "base_assessment": {
+    "applicable": true,
+    "reason": "Synthetic evidence-backed route test; not a real Ticket.",
+    "evidence_refs": [
+      "event:1",
+      "policy:fixture@1"
+    ],
+    "conditions": [
+      {
+        "key": "receipt_date",
+        "status": "satisfied",
+        "explanation": "Synthetic condition confirmed.",
+        "evidence_refs": [
+          "event:1",
+          "policy:fixture@1"
+        ]
+      },
+      {
+        "key": "request_date",
+        "status": "satisfied",
+        "explanation": "Synthetic condition confirmed.",
+        "evidence_refs": [
+          "event:1",
+          "policy:fixture@1"
+        ]
+      },
+      {
+        "key": "item_condition",
+        "status": "satisfied",
+        "explanation": "Synthetic condition confirmed.",
+        "evidence_refs": [
+          "event:1",
+          "policy:fixture@1"
+        ]
+      },
+      {
+        "key": "security_seal",
+        "status": "satisfied",
+        "explanation": "Synthetic condition confirmed.",
+        "evidence_refs": [
+          "event:1",
+          "policy:fixture@1"
+        ]
+      },
+      {
+        "key": "item_eligibility",
+        "status": "satisfied",
+        "explanation": "Synthetic condition confirmed.",
+        "evidence_refs": [
+          "event:1",
+          "policy:fixture@1"
+        ]
+      },
+      {
+        "key": "request_window",
+        "status": "satisfied",
+        "explanation": "Synthetic condition confirmed.",
+        "evidence_refs": [
+          "event:1",
+          "policy:fixture@1"
+        ]
+      }
+    ],
+    "customer_position": "conditions_confirmed",
+    "position_evidence_refs": [
+      "event:1"
+    ],
+    "exception_reason": ""
+  },
+  "evidence_refs": [
+    "event:1",
+    "policy:fixture@1"
+  ],
+  "cases": [
+    {
+      "key": "confirmed_context",
+      "changes": {},
+      "condition_statuses": {},
+      "expected_stage": "offer_options",
+      "expected_rule": "eligible_proposal"
+    },
+    {
+      "key": "missing_seal",
+      "changes": {},
+      "condition_statuses": {
+        "security_seal": "missing"
+      },
+      "expected_stage": "collect_conditions",
+      "expected_rule": "missing_eligibility"
+    },
+    {
+      "key": "missing_state",
+      "changes": {},
+      "condition_statuses": {
+        "item_condition": "missing"
+      },
+      "expected_stage": "collect_conditions",
+      "expected_rule": "missing_eligibility"
+    },
+    {
+      "key": "outside_window",
+      "changes": {},
+      "condition_statuses": {
+        "request_window": "failed"
+      },
+      "expected_stage": "exception_review",
+      "expected_rule": "specific_exception"
+    },
+    {
+      "key": "conflicting_receipt",
+      "changes": {},
+      "condition_statuses": {
+        "receipt_date": "conflict"
+      },
+      "expected_stage": "exception_review",
+      "expected_rule": "specific_exception"
+    },
+    {
+      "key": "conditional_acceptance",
+      "changes": {
+        "customer_position": "conditional_acceptance"
+      },
+      "condition_statuses": {},
+      "expected_stage": "offer_options",
+      "expected_rule": "eligible_proposal"
+    },
+    {
+      "key": "conditional_change_needs_approval",
+      "changes": {
+        "customer_position": "conditional_acceptance",
+        "exception_reason": "Return-postage concession has no authorization."
+      },
+      "condition_statuses": {},
+      "expected_stage": "exception_review",
+      "expected_rule": "specific_exception"
+    },
+    {
+      "key": "accepted_offer",
+      "changes": {
+        "customer_position": "option_accepted"
+      },
+      "condition_statuses": {},
+      "expected_stage": "send_instructions",
+      "expected_rule": "accepted_offer"
+    },
+    {
+      "key": "accepted_missing_historical_state",
+      "changes": {
+        "customer_position": "option_accepted"
+      },
+      "condition_statuses": {
+        "item_condition": "missing"
+      },
+      "expected_stage": "send_instructions",
+      "expected_rule": "accepted_offer"
+    },
+    {
+      "key": "accepted_with_new_conflict",
+      "changes": {
+        "customer_position": "option_accepted",
+        "exception_reason": "Different product identity discovered after acceptance."
+      },
+      "condition_statuses": {},
+      "expected_stage": "send_instructions",
+      "expected_rule": "accepted_offer"
+    },
+    {
+      "key": "already_shipped",
+      "changes": {
+        "customer_position": "return_shipped"
+      },
+      "condition_statuses": {},
+      "expected_stage": "track_return",
+      "expected_rule": "dispatched_return"
+    },
+    {
+      "key": "shipped_missing_eligibility",
+      "changes": {
+        "customer_position": "return_shipped"
+      },
+      "condition_statuses": {
+        "request_window": "missing",
+        "item_condition": "missing"
+      },
+      "expected_stage": "track_return",
+      "expected_rule": "dispatched_return"
+    },
+    {
+      "key": "delivery_claim",
+      "changes": {
+        "customer_position": "return_received"
+      },
+      "condition_statuses": {},
+      "expected_stage": "review_refund",
+      "expected_rule": "receipt_or_refund_review"
+    },
+    {
+      "key": "refund_claim",
+      "changes": {
+        "customer_position": "refund_issued"
+      },
+      "condition_statuses": {},
+      "expected_stage": "review_refund",
+      "expected_rule": "receipt_or_refund_review"
+    },
+    {
+      "key": "policy_conflict",
+      "changes": {
+        "exception_reason": "Current policy conflicts with verified guidance."
+      },
+      "condition_statuses": {},
+      "expected_stage": "exception_review",
+      "expected_rule": "specific_exception"
+    },
+    {
+      "key": "mixed_item_scope",
+      "changes": {
+        "exception_reason": "Second custom item with arrival defect requires separate investigation."
+      },
+      "condition_statuses": {},
+      "expected_stage": "exception_review",
+      "expected_rule": "specific_exception"
+    },
+    {
+      "key": "seal_missing_on_arrival",
+      "changes": {
+        "exception_reason": "Customer reports seal absent on arrival; do not infer misuse."
+      },
+      "condition_statuses": {
+        "security_seal": "conflict"
+      },
+      "expected_stage": "exception_review",
+      "expected_rule": "specific_exception"
+    },
+    {
+      "key": "conflict_precedes_missing",
+      "changes": {},
+      "condition_statuses": {
+        "request_window": "missing",
+        "item_condition": "conflict"
+      },
+      "expected_stage": "exception_review",
+      "expected_rule": "specific_exception"
+    },
+    {
+      "key": "no_return",
+      "changes": {
+        "customer_position": "none",
+        "applicable": false,
+        "conditions": [],
+        "position_evidence_refs": []
+      },
+      "condition_statuses": {},
+      "expected_stage": null,
+      "expected_rule": null
+    }
+  ]
+}

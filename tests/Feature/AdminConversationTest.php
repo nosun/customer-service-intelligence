@@ -12,6 +12,7 @@ use App\Models\DecisionCase;
 use App\Models\DecisionNode;
 use App\Models\DecisionNodeEvidence;
 use App\Services\TicketWork\N8nTicketDraftService;
+use App\Services\TicketWork\TicketOrderWorkbench;
 use Encore\Admin\Auth\Database\Administrator;
 use Encore\Admin\Auth\Database\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -178,7 +179,7 @@ class AdminConversationTest extends TestCase
 
         $this->get("/admin/conversations/{$ticket->id}")
             ->assertOk()
-            ->assertSee('shadow 模式')
+            ->assertSee('发送仍在 HelpDesk。')
             ->assertSee('work/ticket-draft-v1');
     }
 
@@ -189,6 +190,7 @@ class AdminConversationTest extends TestCase
         $draft = ConversationDraft::create([
             'conversation_id' => $ticket->id,
             'body' => 'Initial AI answer.',
+            'metadata' => ['workbench_input_hash' => app(TicketOrderWorkbench::class)->inputHash($ticket)],
             'source' => 'n8n',
             'status' => 'draft',
             'created_by' => $administrator->id,

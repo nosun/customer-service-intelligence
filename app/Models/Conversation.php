@@ -32,9 +32,40 @@ class Conversation extends Model
             ->where('source_type', 'conversation');
     }
 
+    public function assistanceFeedback(): HasMany
+    {
+        return $this->hasMany(TicketAssistanceFeedback::class);
+    }
+
     public function businessContextSnapshots(): HasMany
     {
         return $this->hasMany(BusinessContextSnapshot::class);
+    }
+
+    public function latestOrderContext(): HasOne
+    {
+        return $this->hasOne(BusinessContextSnapshot::class)
+            ->where('source', 'console_new')
+            ->where('context_type', 'ticket_order')
+            ->latestOfMany();
+    }
+
+    public function draftGuidance(): ?array
+    {
+        $text = trim((string) $this->draft_guidance);
+        $feedback = $this->assistanceFeedback()->whereIn('kind', ['fact', 'decision', 'correction'])->orderByDesc('id')->limit(20)->get()->reverse();
+        foreach ($feedback as $entry) {
+            $label = ['fact' => '人工补充，尚需核实的个案事实', 'decision' => '当前个案决定，不代表已经执行', 'correction' => '当前个案纠正'][$entry->kind];
+            $text .= "\n[{$label} #{$entry->id}] ".mb_substr($entry->body, 0, 4000);
+        }
+        $text = trim($text);
+
+        return $text === '' ? null : [
+            'text' => $text,
+            'source' => 'admin_supplement',
+            'scope' => 'current_ticket_only',
+            'updated_at' => $this->draft_guidance_updated_at?->toIso8601String(),
+        ];
     }
 
     public function latestCancellationContext(): HasOne
@@ -68,6 +99,7 @@ class Conversation extends Model
     protected function casts(): array
     {
         return [
+            'draft_guidance_updated_at' => 'datetime',
             'requester_snapshot' => 'array',
             'assignment_snapshot' => 'array',
             'created_at_external' => 'datetime',

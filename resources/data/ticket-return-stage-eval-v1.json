@@ -1,0 +1,186 @@
+{
+  "synthetic": true,
+  "policy": "For standard-size dresses, request return approval within 14 calendar days of receipt. Trying on is permitted. Keep the dress unworn except trying on, unwashed, unaltered and in its original condition with security seal intact. Customized items are excluded from ordinary returns; quality disputes require individual review. For an eligible ordinary return, refund the returned product price after receipt and inspection; original shipping is non-refundable and customer pays return postage. No restocking fee. No keep-item compensation or donation alternative is authorized by this fixture. After accepting an offer, obtain verified return instructions before shipping. Do not invent a street address, refund execution or timing.",
+  "cases": [
+    {
+      "key": "confirmed_context",
+      "expected_stage": "offer_options",
+      "messages": [
+        {
+          "role": "customer",
+          "text": "I need to return my standard size 6 dress because the bodice is too tight.",
+          "occurred_at": "2026-10-24T12:00:00Z"
+        },
+        {
+          "role": "agent",
+          "text": "Please confirm the date you received it, whether it is unworn apart from trying on, unwashed, undamaged and unaltered, and whether the security seal is intact. No measurement photos are needed.",
+          "occurred_at": "2026-10-24T13:00:00Z"
+        },
+        {
+          "role": "customer",
+          "text": "Received October 19. Seal is intact. Only tried on, not worn, unwashed and unaltered. The bodice is too tight to zip.",
+          "occurred_at": "2026-10-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "missing_condition",
+      "expected_stage": "collect_conditions",
+      "messages": [
+        {
+          "role": "customer",
+          "text": "My standard size 6 dress arrived on October 19. It is too tight and I would like to return it.",
+          "occurred_at": "2026-10-24T12:00:00Z"
+        },
+        {
+          "role": "agent",
+          "text": "Please confirm the dress's condition and whether the seal is intact.",
+          "occurred_at": "2026-10-24T13:00:00Z"
+        },
+        {
+          "role": "customer",
+          "text": "What do I need to do next?",
+          "occurred_at": "2026-10-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "outside_window",
+      "expected_stage": "exception_review",
+      "messages": [
+        {
+          "role": "customer",
+          "text": "My standard size 6 dress arrived on September 1. Today October 24 is my first request to return it because it does not fit. It is in original condition, only tried on, not washed or altered, and the seal is intact.",
+          "occurred_at": "2026-10-24T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "conditional_acceptance",
+      "expected_stage": "offer_options",
+      "allowed_stages": [
+        "offer_options",
+        "exception_review"
+      ],
+      "forbidden_position": "option_accepted",
+      "messages": [
+        {
+          "role": "customer",
+          "text": "Received October 19, only tried on, unwashed, unaltered, undamaged and seal intact. I need to return my standard size 6 dress.",
+          "occurred_at": "2026-10-24T12:00:00Z"
+        },
+        {
+          "role": "agent",
+          "text": "You can return the dress for USD 100 after receipt and inspection. Original shipping USD 20 is excluded and you pay return postage. Please confirm whether you accept.",
+          "occurred_at": "2026-10-24T13:00:00Z"
+        },
+        {
+          "role": "customer",
+          "text": "I will only accept if you pay the return postage. Otherwise I have not agreed.",
+          "occurred_at": "2026-10-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "accepted_offer",
+      "expected_stage": "send_instructions",
+      "messages": [
+        {
+          "role": "customer",
+          "text": "Received October 19, only tried on, unwashed, unaltered, undamaged and seal intact. I need to return my standard size 6 dress.",
+          "occurred_at": "2026-10-24T12:00:00Z"
+        },
+        {
+          "role": "agent",
+          "text": "You can return the dress for USD 100 after receipt and inspection. Original shipping USD 20 is excluded and you pay return postage. Please confirm whether you accept.",
+          "occurred_at": "2026-10-24T13:00:00Z"
+        },
+        {
+          "role": "customer",
+          "text": "I accept those terms. Please send the return instructions.",
+          "occurred_at": "2026-10-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "already_shipped",
+      "expected_stage": "track_return",
+      "messages": [
+        {
+          "role": "agent",
+          "text": "Your accepted return refund is USD 100 after receipt and inspection. We previously provided the return instructions.",
+          "occurred_at": "2026-10-24T13:00:00Z"
+        },
+        {
+          "role": "customer",
+          "text": "I sent the dress back today. The postal reference is LH123456789US. Please let me know the next step.",
+          "occurred_at": "2026-10-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "internal_delay",
+      "expected_stage": "offer_options",
+      "messages": [
+        {
+          "role": "customer",
+          "text": "My standard size 6 dress arrived September 1. It is too tight. Only tried on, not worn, washed or altered, undamaged and seal intact. I request a return.",
+          "occurred_at": "2026-09-05T12:00:00Z"
+        },
+        {
+          "role": "agent",
+          "text": "We are checking your return request. Please wait for our response.",
+          "occurred_at": "2026-09-06T12:00:00Z"
+        },
+        {
+          "role": "customer",
+          "text": "It is October 25 and I am still waiting. The condition is unchanged. What is the next step?",
+          "occurred_at": "2026-10-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "mixed_item_scope",
+      "expected_stage": "exception_review",
+      "messages": [
+        {
+          "role": "customer",
+          "text": "I received two dresses October 19 and requested returns October 24. The standard size 6 dress is only tried on, unwashed, unaltered and undamaged with seal intact. The second dress was custom made and has a ripped seam on arrival. I want both addressed. Your order API only lists the first item, so please investigate the second item and its quality claim separately.",
+          "occurred_at": "2026-10-24T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "delivery_claim",
+      "expected_stage": "review_refund",
+      "messages": [
+        {
+          "role": "agent",
+          "text": "Your agreed return is USD 100 after warehouse receipt and inspection. You supplied the return postal reference LH123456789US.",
+          "occurred_at": "2026-10-24T12:00:00Z"
+        },
+        {
+          "role": "customer",
+          "text": "The postal website says my return was delivered. Have you checked it and processed my refund?",
+          "occurred_at": "2026-10-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "key": "refund_claim",
+      "expected_stage": "review_refund",
+      "messages": [
+        {
+          "role": "agent",
+          "text": "Our prior return-case record says the dress was received and inspected. We will arrange the agreed USD 100 refund. This is a promise of future processing, not a payment confirmation.",
+          "occurred_at": "2026-10-24T12:00:00Z"
+        },
+        {
+          "role": "customer",
+          "text": "You promised my refund. Has it actually been issued? I have not received money.",
+          "occurred_at": "2026-10-25T12:00:00Z"
+        }
+      ]
+    }
+  ]
+}

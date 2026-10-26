@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\KnowledgeArticle;
 use App\Models\KnowledgeArticleBinding;
 use App\Models\KnowledgeArticleVersion;
+use App\Models\KnowledgePublication;
 use App\Services\ProductQuestions\KnowledgeArticleVersionPublisher;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Layout\Content;
@@ -37,7 +38,7 @@ class KnowledgeArticleController extends Controller
 
         return $content->title($knowledgeArticle->title)
             ->description($knowledgeArticle->key.' · published v'.$knowledgeArticle->version)
-            ->body(view('admin.knowledge-articles.show', compact('knowledgeArticle', 'versions')));
+            ->body(view('admin.knowledge-articles.show', ['knowledgeArticle' => $knowledgeArticle, 'versions' => $versions, 'publications' => KnowledgePublication::where('knowledge_article_id', $knowledgeArticle->id)->get()]));
     }
 
     public function storeDraft(

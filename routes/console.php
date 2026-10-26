@@ -1,5 +1,7 @@
 <?php
 
+use App\Jobs\SyncKnowledgeToWeKnora;
+use App\Models\KnowledgePublication;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
@@ -56,3 +58,16 @@ Schedule::command('product-questions:draft-workflow-health --hours=1 --fail-on-u
     ->timezone('Asia/Shanghai')
     ->withoutOverlapping(5)
     ->onFailure(fn () => Log::critical('Product question n8n Draft workflow health check failed.'));
+
+Schedule::command('tickets:assist')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onFailure(fn () => Log::error('Ticket assistance dispatch failed.'));
+
+Schedule::call(function (): void {
+    if (! config('weknora.publish_enabled')) {
+        return;
+    }
+    KnowledgePublication::whereIn('status', ['indexing', 'stale'])->orderBy('updated_at')->limit(20)
+        ->each(fn ($publication) => SyncKnowledgeToWeKnora::dispatch($publication->knowledge_article_id));
+})->name('weknora:verify-publications')->everyFiveMinutes()->withoutOverlapping(5);

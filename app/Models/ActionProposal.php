@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ActionProposal extends Model
 {
-    public const STATUSES = ['proposed', 'approved', 'rejected', 'executing', 'succeeded', 'failed', 'cancelled'];
+    public const STATUSES = ['proposed', 'approved', 'rejected', 'executing', 'succeeded', 'failed', 'cancelled', 'stale', 'uncertain', 'partial'];
 
     protected $guarded = [];
 

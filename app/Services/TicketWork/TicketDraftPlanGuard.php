@@ -9,10 +9,15 @@ class TicketDraftPlanGuard
     public const SUPPORTED_INTENTS = [
         'production_order_status',
         'logistics_tracking_delivery',
+        'production_cancellation',
+        'standard_size_change',
+        'refund_review',
     ];
 
+    public const INVESTIGATION_INTENTS = [...self::SUPPORTED_INTENTS, 'presales_consultation', 'after_sales_complaint', 'factory_clarification', 'conversation_update'];
+
     /** @return array<string,mixed> */
-    public function validate(array $plan): array
+    public function validate(array $plan, bool $investigation = false): array
     {
         $intents = [];
         $clauses = array_values(array_filter((array) ($plan['clauses'] ?? []), 'is_array'));
@@ -24,12 +29,13 @@ class TicketDraftPlanGuard
         if (count($policyKeys) > 8) {
             throw ValidationException::withMessages(['plan' => 'Ticket plan exceeds the supported intent or Policy limit.']);
         }
-        foreach ($clauses as &$clause) {
+        foreach ($clauses as $index => &$clause) {
             if (trim((string) ($clause['text'] ?? '')) === '') {
                 throw ValidationException::withMessages(['plan' => 'Every Ticket clause must include text.']);
             }
+            $clause['id'] = 'request_'.($index + 1);
             $intent = (string) ($clause['intent'] ?? '');
-            if (in_array($intent, self::SUPPORTED_INTENTS, true)) {
+            if (in_array($intent, $investigation ? self::INVESTIGATION_INTENTS : self::SUPPORTED_INTENTS, true)) {
                 $intents[] = $intent;
             } else {
                 $clause['intent'] = 'unsupported';

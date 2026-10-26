@@ -1,5 +1,7 @@
 # Ticket 管理工作台实施计划
 
+> 2026-10-22 范围更新：[Ticket 订单处理工作台设计](../architecture/ticket-order-actions-workflow.md)将整单取消和标准改码纳入下一阶段，退款仅核查与建议，邮件发送保留在 HelpDesk。下文关于业务写入暂缓和 HelpDesk 发送的早期规划，以该设计的一期范围为准；这项范围更新不代表功能已实现。
+
 ## 1. 目标
 
 在现有 Laravel-Admin 中建立一个日常可用的 Ticket 工作台，将 HelpDesk Ticket、规则分析、Decision Case、人工审核和回复草稿放在同一页面。

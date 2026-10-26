@@ -8,6 +8,7 @@ use App\Models\Conversation;
 use App\Services\HelpDesk\HelpDeskClient;
 use App\Services\HelpDesk\HelpDeskImportService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 class SyncHelpDeskIncremental extends Command
@@ -25,6 +26,25 @@ class SyncHelpDeskIncremental extends Command
     protected $description = 'Synchronize HelpDesk tickets updated after the saved cursor';
 
     public function handle(HelpDeskClient $client, HelpDeskImportService $importer): int
+    {
+        $lock = Cache::lock('helpdesk:incremental-sync', 3600);
+        if (! $lock->get()) {
+            $this->info('HelpDesk synchronization is already running.');
+
+            return self::SUCCESS;
+        }
+        try {
+            Cache::put('helpdesk:sync-state', ['status' => 'running', 'started_at' => now()->toIso8601String()], 3600);
+            $code = $this->synchronize($client, $importer);
+            Cache::put('helpdesk:sync-state', ['status' => $code === self::SUCCESS ? 'completed' : 'failed', 'finished_at' => now()->toIso8601String()], 3600);
+
+            return $code;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function synchronize(HelpDeskClient $client, HelpDeskImportService $importer): int
     {
         $account = ChannelAccount::where('channel', 'helpdesk')->orderBy('id')->first();
         if ($account === null) {

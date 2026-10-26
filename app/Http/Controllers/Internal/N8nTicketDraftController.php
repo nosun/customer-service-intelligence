@@ -49,6 +49,20 @@ class N8nTicketDraftController extends Controller
         return response()->json($service->policies($this->item($workItemKey), $input['execution_id'], $input['policy_keys']));
     }
 
+    public function planReply(Request $request, string $workItemKey, N8nTicketDraftService $service): JsonResponse
+    {
+        $input = $request->validate(['execution_id' => ['required', 'string', 'max:255'], 'reply_plan' => ['required', 'array']]);
+
+        return response()->json($service->planReply($this->item($workItemKey), $input['execution_id'], $input['reply_plan']));
+    }
+
+    public function investigate(Request $request, string $workItemKey, N8nTicketDraftService $service): JsonResponse
+    {
+        $input = $request->validate(['execution_id' => ['required', 'string', 'max:255']]);
+
+        return response()->json($service->investigate($this->item($workItemKey), $input['execution_id']));
+    }
+
     public function complete(Request $request, string $workItemKey, N8nTicketDraftService $service): JsonResponse
     {
         $input = $request->validate([
@@ -61,6 +75,20 @@ class N8nTicketDraftController extends Controller
             'review.answer_en' => ['nullable', 'string', 'max:100000'],
             'review.answer_customer_language' => ['nullable', 'string', 'max:100000'],
             'review.safety_flags' => ['present', 'array'],
+            // Conflicts may be text or structured review evidence; any nonempty list blocks adoption.
+            'review.guidance_conflicts' => ['sometimes', 'array', 'max:50'],
+            'review.response_decision_approved' => ['sometimes', 'boolean'],
+            'review.reviewed_response_mode' => ['sometimes', 'string', 'in:reply,acknowledge,no_reply'],
+            'review.quality_checks' => ['sometimes', 'array'],
+            'review.covered_request_ids' => ['sometimes', 'array'],
+            'review.business_conflicts' => ['sometimes', 'array'],
+            'review.reviewed_answer' => ['sometimes', 'nullable', 'string', 'max:100000'],
+            'review.initial_review' => ['sometimes', 'nullable', 'array'],
+            'review.candidate' => ['sometimes', 'array'],
+            'review.problems' => ['sometimes', 'array'],
+            'review.repairable' => ['sometimes', 'boolean'],
+            'review.template_deviations' => ['sometimes', 'array'],
+            'review.guidance_evidence' => ['sometimes', 'nullable', 'string', 'max:10000'],
         ]);
 
         return response()->json($service->complete($this->item($workItemKey), $input['execution_id'], $input['review']));

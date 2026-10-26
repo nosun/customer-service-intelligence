@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "synthetic": true,
+  "case_key": "synthetic:delivered-not-received",
+  "messages": [
+    { "role": "customer", "text": "The tracking says delivered, but I have not received my parcel. Can you investigate?" }
+  ],
+  "facts": [
+    { "key": "order.found", "value": true, "source": "synthetic", "sensitivity": "internal", "shareable_with_ai": true },
+    { "key": "order.identity_match", "value": true, "source": "synthetic", "sensitivity": "internal", "shareable_with_ai": true },
+    { "key": "order.shipping_status", "value": "Shipped", "source": "synthetic", "sensitivity": "internal", "shareable_with_ai": true },
+    { "key": "shipment.carrier", "value": "Synthetic Carrier", "source": "synthetic", "sensitivity": "internal", "shareable_with_ai": true },
+    { "key": "shipment.logistics_status", "value": "Delivered", "source": "synthetic", "sensitivity": "internal", "shareable_with_ai": true },
+    { "key": "shipment.delivered_at", "value": "2026-10-23T09:00:00Z", "source": "synthetic", "sensitivity": "internal", "shareable_with_ai": true }
+  ],
+  "policies": [
+    {
+      "key": "synthetic_delivery_dispute",
+      "version": 1,
+      "title": "Synthetic delivered-not-received investigation procedure",
+      "status": "verified",
+      "bound_intents": ["logistics_tracking_delivery"],
+      "policy_rules": [
+        "A delivered scan does not prove the customer personally received the parcel.",
+        "Recommend obtaining proof of delivery and confirming the delivery location through authorized staff.",
+        "Do not promise a refund, compensation or delivery date without separate verified authority."
+      ]
+    }
+  ],
+  "missing_facts": ["shipment.proof_of_delivery"],
+  "safety_flags": []
+}

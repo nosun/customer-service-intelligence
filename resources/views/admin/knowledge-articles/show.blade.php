@@ -20,8 +20,17 @@
         </div><div class="box-footer"><button class="btn btn-primary">保存 Draft 版本</button> <span class="text-muted">不会立即影响生成流程</span></div></form>
     </div></div>
     <div class="col-md-4"><div class="box box-solid"><div class="box-header with-border"><h3 class="box-title">版本历史</h3></div><div class="box-body">
+        <p class="text-muted">审核包含脱敏检查；source_notes 保留本地，不上传通用知识库。</p>
+        @foreach($publications as $publication)<p>WeKnora v{{ $publication->version }} · {{ $publication->status }} @if($publication->error_message){{ $publication->error_message }}@endif</p>@endforeach
         @foreach($versions as $version)<div style="border-bottom:1px solid #eee;padding:10px 0">
             <strong>v{{ $version->version }}</strong> · {{ $version->status }}<br><span class="text-muted">{{ $version->change_summary ?: '无摘要' }}</span>
+            <details><summary>查看完整候选与字段差异</summary>
+                @foreach(\App\Services\ProductQuestions\KnowledgeArticleVersionPublisher::FIELDS as $field)
+                    @if(data_get($version->snapshot, $field) !== $knowledgeArticle->{$field})<p><strong>{{ $field }}：有变更</strong></p><pre style="white-space:pre-wrap">原值：{{ json_encode($knowledgeArticle->{$field}, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) }}
+候选：{{ json_encode(data_get($version->snapshot, $field), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) }}</pre>@endif
+                @endforeach
+                <pre style="white-space:pre-wrap">{{ json_encode($version->snapshot, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) }}</pre>
+            </details>
             @if($version->status === 'draft')<div style="margin-top:8px;display:flex;gap:6px">
                 <form method="post" action="{{ admin_url('knowledge-articles/'.$knowledgeArticle->id.'/versions/'.$version->id.'/publish') }}">@csrf<button class="btn btn-xs btn-success">人工确认并发布</button></form>
                 <form method="post" action="{{ admin_url('knowledge-articles/'.$knowledgeArticle->id.'/versions/'.$version->id.'/reject') }}">@csrf<button class="btn btn-xs btn-danger">驳回</button></form>

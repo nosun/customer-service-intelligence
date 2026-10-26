@@ -9,6 +9,8 @@ use App\Admin\Controllers\HomeController;
 use App\Admin\Controllers\KnowledgeArticleController;
 use App\Admin\Controllers\ProductQuestionController;
 use App\Admin\Controllers\ProductQuestionPolicyController;
+use App\Admin\Controllers\TicketAssistanceController;
+use App\Admin\Controllers\TicketWorkbenchController;
 use App\Admin\Controllers\WorkflowReplayReviewController;
 use Encore\Admin\Facades\Admin;
 use Illuminate\Routing\Router;
@@ -23,9 +25,17 @@ Route::group([
 ], function (Router $router): void {
     $router->get('/', [HomeController::class, 'index'])->name('home');
     $router->get('conversations', [ConversationController::class, 'index'])->name('conversations.index');
+    $router->post('conversations/sync', [TicketWorkbenchController::class, 'sync'])->name('conversations.sync');
+    $router->post('conversations/{id}/assistance-feedback', [TicketAssistanceController::class, 'feedback'])->name('conversations.assistance-feedback');
+    $router->post('conversations/{id}/guidance', [TicketWorkbenchController::class, 'guidance'])->name('conversations.guidance');
+    $router->post('conversations/{id}/inspect-order', [TicketWorkbenchController::class, 'inspect'])->name('conversations.inspect-order');
+    $router->post('conversations/{id}/preview-action', [TicketWorkbenchController::class, 'preview'])->name('conversations.preview-action');
+    $router->post('conversations/{id}/actions/{proposal}/execute', [TicketWorkbenchController::class, 'execute'])->name('conversations.actions.execute');
+    $router->post('conversations/{id}/actions/{proposal}/reconcile', [TicketWorkbenchController::class, 'reconcile'])->name('conversations.actions.reconcile');
     $router->get('conversations/{id}', [ConversationController::class, 'show'])->name('conversations.show');
     $router->post('conversations/{id}/draft', [ConversationController::class, 'storeDraft'])->name('conversations.draft');
     $router->post('conversations/{id}/generate-draft', [ConversationController::class, 'generateDraft'])->name('conversations.generate-draft');
+    $router->post('conversations/{id}/agent-assist', [TicketAssistanceController::class, 'agent'])->name('conversations.agent-assist');
     $router->post('conversations/{id}/drafts/{draft}/review', [ConversationController::class, 'reviewDraft'])->name('conversations.drafts.review');
     $router->post('conversations/{id}/verify-cancellation', [ConversationController::class, 'verifyCancellation'])->name('conversations.verify-cancellation');
     $router->post('conversations/{id}/cases/{case}/review', [ConversationController::class, 'reviewCase'])->name('conversations.cases.review');

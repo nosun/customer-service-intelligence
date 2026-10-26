@@ -2,6 +2,7 @@
 
 namespace App\Services\ProductQuestions;
 
+use App\Jobs\SyncKnowledgeToWeKnora;
 use App\Models\KnowledgeArticle;
 use App\Models\KnowledgeArticleVersion;
 use Illuminate\Support\Facades\DB;
@@ -25,17 +26,19 @@ class KnowledgeArticleVersionPublisher
     {
         return DB::transaction(function () use ($article, $changes, $summary, $userId): KnowledgeArticleVersion {
             $locked = KnowledgeArticle::query()->lockForUpdate()->findOrFail($article->id);
-            $locked->versions()->firstOrCreate(
-                ['version' => $locked->version],
-                [
-                    'status' => 'published',
-                    'snapshot' => $this->snapshot($locked),
-                    'change_summary' => 'Snapshot of the current published Policy before versioned editing.',
-                    'reviewed_by' => $locked->reviewed_by,
-                    'reviewed_at' => $locked->reviewed_at,
-                    'published_at' => $locked->reviewed_at ?? $locked->updated_at,
-                ],
-            );
+            if ($locked->status === 'verified') {
+                $locked->versions()->firstOrCreate(
+                    ['version' => $locked->version],
+                    [
+                        'status' => 'published',
+                        'snapshot' => $this->snapshot($locked),
+                        'change_summary' => 'Snapshot of the current published Policy before versioned editing.',
+                        'reviewed_by' => $locked->reviewed_by,
+                        'reviewed_at' => $locked->reviewed_at,
+                        'published_at' => $locked->reviewed_at ?? $locked->updated_at,
+                    ],
+                );
+            }
             if ($locked->versions()->where('status', 'draft')->exists()) {
                 throw new RuntimeException('This Policy already has an unpublished Draft version.');
             }
@@ -86,6 +89,10 @@ class KnowledgeArticleVersionPublisher
                 'reviewed_at' => now(),
                 'published_at' => now(),
             ]);
+
+            if (config('weknora.publish_enabled')) {
+                SyncKnowledgeToWeKnora::dispatch($article->id)->afterCommit();
+            }
 
             return $article->fresh();
         });
