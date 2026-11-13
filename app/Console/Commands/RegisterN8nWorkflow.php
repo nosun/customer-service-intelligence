@@ -67,20 +67,25 @@ class RegisterN8nWorkflow extends Command
                     ]);
             }
 
+            $attributes = [
+                'n8n_workflow_id' => $this->option('n8n-id') ?: null,
+                'prompt_version' => $this->option('prompt-version') ?: null,
+                'definition_checksum' => $definitionChecksum,
+                'status' => $status,
+                'replay_metrics' => $report['metrics'] ?? null,
+                'published_at' => $status === 'active' ? now() : null,
+                'deprecated_at' => $status === 'deprecated' ? now() : null,
+            ];
+            if ($key === 'work/multi-dress-first-round-v1') {
+                $attributes += ['center' => 'work', 'domain' => 'customer_contacts'];
+            }
+
             return AiWorkflow::query()->updateOrCreate(
                 [
                     'workflow_key' => $key,
                     'workflow_version' => $version,
                 ],
-                [
-                    'n8n_workflow_id' => $this->option('n8n-id') ?: null,
-                    'prompt_version' => $this->option('prompt-version') ?: null,
-                    'definition_checksum' => $definitionChecksum,
-                    'status' => $status,
-                    'replay_metrics' => $report['metrics'] ?? null,
-                    'published_at' => $status === 'active' ? now() : null,
-                    'deprecated_at' => $status === 'deprecated' ? now() : null,
-                ],
+                $attributes,
             );
         });
 

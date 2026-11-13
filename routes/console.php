@@ -64,6 +64,17 @@ Schedule::command('tickets:assist')
     ->withoutOverlapping(5)
     ->onFailure(fn () => Log::error('Ticket assistance dispatch failed.'));
 
+// First-round scans are opt-in. Effect processing can reconcile old intents after sending is disabled.
+Schedule::command('contacts:multi-dress-scan --draft')
+    ->everyFiveMinutes()->withoutOverlapping(10)
+    ->when(fn () => config('customer_contacts.scan_enabled') && config('customer_contacts.mode') !== 'off');
+Schedule::command('contacts:multi-dress-process-effects')->everyMinute()->withoutOverlapping(10)
+    ->when(fn () => in_array(config('customer_contacts.mode'), ['shadow', 'live'], true));
+Schedule::command('contacts:multi-dress-check-waiting')->everyMinute()->withoutOverlapping(10)
+    ->when(fn () => in_array(config('customer_contacts.mode'), ['shadow', 'live'], true));
+Schedule::command('contacts:multi-dress-health --fail-on-unhealthy')->everyFiveMinutes()->withoutOverlapping(5)
+    ->onFailure(fn () => Log::warning('Multi-dress first-round workflow needs attention.'));
+
 Schedule::call(function (): void {
     if (! config('weknora.publish_enabled')) {
         return;

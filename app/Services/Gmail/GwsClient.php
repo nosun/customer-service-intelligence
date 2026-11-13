@@ -63,7 +63,7 @@ class GwsClient
         }
 
         $pages = [];
-        foreach (preg_split('/\R/', $output) ?: [] as $line) {
+        foreach (preg_split('/\r\n|\n|\r/', $output) ?: [] as $line) {
             if ($line === '') {
                 continue;
             }
@@ -91,13 +91,68 @@ class GwsClient
         ]), true, 512, JSON_THROW_ON_ERROR);
     }
 
-    /** @param list<string> $arguments */
-    private function run(array $arguments): string
+    public function profile(): array
     {
-        for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
+        return $this->gmailRequest('getProfile', ['userId' => 'me']);
+    }
+
+    public function getMessage(string $messageId): array
+    {
+        return $this->gmailRequest('messages', ['userId' => 'me', 'id' => $messageId, 'format' => 'full'], 'get');
+    }
+
+    /** Complete all-folder message search; partial results cannot prove no reply. */
+    public function listMessageIds(string $query, int $pageLimit = 100): array
+    {
+        $ids = [];
+        $token = null;
+        for ($page = 0; $page < max(1, $pageLimit); $page++) {
+            $result = $this->gmailRequest('messages', ['userId' => 'me', 'q' => $query,
+                'includeSpamTrash' => true, 'maxResults' => 100,
+                ...($token ? ['pageToken' => $token] : [])], 'list');
+            foreach ($result['messages'] ?? [] as $message) {
+                $ids[(string) $message['id']] = true;
+            }
+            $token = $result['nextPageToken'] ?? null;
+            if (! $token) {
+                return array_keys($ids);
+            }
+        }
+        throw new RuntimeException('Gmail search is incomplete; page limit reached.');
+    }
+
+    public function sendMimeFile(string $path): array
+    {
+        // Sending is not idempotent. Never use the generic transient-error retries here.
+        return json_decode($this->run([
+            'gmail', 'users', 'messages', 'send',
+            '--params', json_encode(['userId' => 'me'], JSON_THROW_ON_ERROR),
+            '--json', '{}', '--upload', $path, '--upload-content-type', 'message/rfc822',
+        ], attempts: 1), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    private function gmailRequest(string $resource, array $params, ?string $method = null): array
+    {
+        return json_decode($this->run([
+            'gmail', 'users', $resource, ...($method === null ? [] : [$method]),
+            '--params', json_encode($params, JSON_THROW_ON_ERROR),
+        ]), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /** @param list<string> $arguments */
+    private function run(array $arguments, ?int $attempts = null): string
+    {
+        $attempts ??= $this->maxAttempts;
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             $process = Process::timeout(120);
             if ($this->configDir !== null && $this->configDir !== '') {
-                $process = $process->env(['GOOGLE_WORKSPACE_CLI_CONFIG_DIR' => $this->configDir]);
+                $credentials = rtrim($this->configDir, '/').'/credentials.json';
+                $process = $process->env([
+                    'GOOGLE_WORKSPACE_CLI_CONFIG_DIR' => $this->configDir,
+                    'GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE' => is_file($credentials) ? $credentials : false,
+                    'GOOGLE_WORKSPACE_CLI_TOKEN' => false,
+                    'GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND' => 'file',
+                ]);
             }
 
             $result = $process->run(array_merge([
@@ -108,7 +163,7 @@ class GwsClient
                 return $result->output();
             }
 
-            if ($attempt < $this->maxAttempts && ! in_array($result->exitCode(), [2, 3], true)) {
+            if ($attempt < $attempts && ! in_array($result->exitCode(), [2, 3], true)) {
                 $delay = $this->retryDelayMilliseconds * $attempt;
                 $this->progress?->__invoke("Gmail 请求失败，{$delay} 毫秒后进行第 ".($attempt + 1).' 次尝试');
                 usleep($delay * 1000);

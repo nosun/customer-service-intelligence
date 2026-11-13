@@ -5,6 +5,7 @@ use App\Admin\Controllers\ChatBotChatController;
 use App\Admin\Controllers\CommerceSiteController;
 use App\Admin\Controllers\ConversationController;
 use App\Admin\Controllers\CustomerCaseController;
+use App\Admin\Controllers\FollowUpController;
 use App\Admin\Controllers\HomeController;
 use App\Admin\Controllers\KnowledgeArticleController;
 use App\Admin\Controllers\ProductQuestionController;
@@ -24,6 +25,16 @@ Route::group([
     'as' => config('admin.route.prefix').'.',
 ], function (Router $router): void {
     $router->get('/', [HomeController::class, 'index'])->name('home');
+    $router->get('multi-dress-rounds', [\App\Admin\Controllers\MultiDressRoundController::class, 'index'])->name('multi-dress-rounds.index');
+    $router->get('multi-dress-rounds/{id}', [\App\Admin\Controllers\MultiDressRoundController::class, 'show'])->name('multi-dress-rounds.show');
+    $router->post('multi-dress-rounds/{id}/hold', [\App\Admin\Controllers\MultiDressRoundController::class, 'hold']);
+    $router->post('multi-dress-rounds/{id}/draft', [\App\Admin\Controllers\MultiDressRoundController::class, 'draft']);
+    $router->post('multi-dress-rounds/{id}/preview-note', [\App\Admin\Controllers\MultiDressRoundController::class, 'previewNote']);
+    $router->post('multi-dress-rounds/{id}/effects/{effectId}/confirm', [\App\Admin\Controllers\MultiDressRoundController::class, 'confirm']);
+    $router->get('follow-ups', [FollowUpController::class, 'index'])->name('follow-ups.index');
+    $router->post('follow-ups', [FollowUpController::class, 'store'])->name('follow-ups.store');
+    $router->get('follow-ups/{id}', [FollowUpController::class, 'show'])->name('follow-ups.show');
+    $router->post('follow-ups/{id}', [FollowUpController::class, 'update'])->name('follow-ups.update');
     $router->get('conversations', [ConversationController::class, 'index'])->name('conversations.index');
     $router->post('conversations/sync', [TicketWorkbenchController::class, 'sync'])->name('conversations.sync');
     $router->post('conversations/{id}/assistance-feedback', [TicketAssistanceController::class, 'feedback'])->name('conversations.assistance-feedback');

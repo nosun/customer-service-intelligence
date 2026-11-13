@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "identity",
+    "order",
+    "items",
+    "contacts",
+    "trigger",
+    "policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "multi_dress.first_round.input.v1"
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "console_key",
+        "site_key",
+        "sid",
+        "oid",
+        "order_number"
+      ],
+      "properties": {
+        "console_key": {
+          "const": "seawave"
+        },
+        "site_key": {
+          "enum": [
+            "dressafford",
+            "ellenbridals"
+          ]
+        },
+        "sid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "oid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "order_number": {
+          "type": "string",
+          "pattern": "^(dad|ebd)[0-9]{8}-[0-9]+$"
+        }
+      }
+    },
+    "order": {
+      "type": "object"
+    },
+    "items": {
+      "type": "array"
+    },
+    "contacts": {
+      "type": "array"
+    },
+    "trigger": {
+      "type": "object"
+    },
+    "policy": {
+      "type": "object"
+    }
+  }
+}

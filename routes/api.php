@@ -33,6 +33,8 @@ Route::prefix('internal/n8n')
         Route::post('/ticket-work-items/{workItemKey}/investigate', [N8nTicketDraftController::class, 'investigate']);
         Route::post('/ticket-work-items/{workItemKey}/complete', [N8nTicketDraftController::class, 'complete']);
         Route::post('/ticket-work-items/{workItemKey}/fail', [N8nTicketDraftController::class, 'fail']);
+        Route::post('/multi-dress-work-items/{workItemKey}/{action}', [\App\Http\Controllers\Internal\N8nMultiDressController::class, 'handle'])
+            ->whereIn('action', ['start', 'render', 'complete', 'fail']);
     });
 
 Route::prefix('internal/n8n')

@@ -51,6 +51,20 @@
 
 <a class="ticket-back" href="{{ admin_url('conversations') }}"><i class="fa fa-arrow-left"></i> 返回 Ticket 队列</a>
 
+@if($ticket->silo === 'tickets')
+<div class="box box-info"><div class="box-body">
+    <a class="btn btn-info btn-sm" href="{{ admin_url('follow-ups?conversation_id='.$ticket->id) }}">加入跟进 / 查看台账</a>
+    <span class="text-muted">回复后仍需处理的问题，可以单独持续跟进。</span>
+    @foreach($ticket->followUps as $followUp)
+        <div style="margin-top:8px"><a href="{{ admin_url('follow-ups/'.$followUp->id) }}">#{{ $followUp->id }} {{ $followUp->title }}</a>
+            @if($followUp->urgent)<span class="label label-danger">紧急</span>@endif
+            <span class="label label-default">{{ \App\Models\FollowUp::STATUSES[$followUp->status] }}</span>
+            <span class="text-muted">下次：{{ $followUp->next_follow_up_at?->timezone(\App\Models\FollowUp::TIMEZONE)->format('m-d H:i') ?? '未安排' }}（北京时间）</span>
+        </div>
+    @endforeach
+</div></div>
+@endif
+
 <div class="ticket-detail">
     <main>
         <div class="box box-primary">

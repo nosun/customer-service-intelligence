@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "decision",
+    "question_module",
+    "evidence_refs",
+    "blocking_reasons"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "enum": [
+        "prepare_first_email",
+        "no_email_needed",
+        "human_required"
+      ]
+    },
+    "question_module": {
+      "enum": [
+        "purpose_and_keep_plan",
+        "quantity_and_purpose",
+        "keep_plan_only",
+        "selection_help"
+      ]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "string"
+      }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

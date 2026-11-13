@@ -1,0 +1,216 @@
+{
+  "mode": "isolated_php_replay",
+  "current": "already_handled",
+  "assertions_passed": 38,
+  "real_emails_sent": 0,
+  "real_console_writes": 0,
+  "real_n8n_executions": 0,
+  "review": "fixed_simulated_review_not_independent_AI",
+  "checks": [
+    {
+      "case": "current_already_handled",
+      "outcome": "skip",
+      "passed": true
+    },
+    {
+      "case": "historical_incomplete_communication",
+      "outcome": "manual",
+      "passed": true
+    },
+    {
+      "case": "historical_clean_baseline_is_synthetic",
+      "outcome": "prepare_first_email",
+      "passed": true
+    },
+    {
+      "case": "hold_notice",
+      "outcome": true,
+      "passed": true
+    },
+    {
+      "case": "48h_notice",
+      "outcome": true,
+      "passed": true
+    },
+    {
+      "case": "no_internal_timeout_disclosure",
+      "outcome": false,
+      "passed": true
+    },
+    {
+      "case": "stable_first_round",
+      "outcome": 1,
+      "passed": true
+    },
+    {
+      "case": "mock_send",
+      "outcome": "sent",
+      "passed": true
+    },
+    {
+      "case": "repeat_send",
+      "outcome": "already_attempted",
+      "passed": true
+    },
+    {
+      "case": "send_call_count",
+      "outcome": 1,
+      "passed": true
+    },
+    {
+      "case": "deadline_48h",
+      "outcome": true,
+      "passed": true
+    },
+    {
+      "case": "note_failure_blocks_timeout",
+      "outcome": "console_note_not_recorded",
+      "passed": true
+    },
+    {
+      "case": "before_deadline",
+      "outcome": "waiting",
+      "passed": true
+    },
+    {
+      "case": "two_dress_due",
+      "outcome": "timeout_preview_ready",
+      "passed": true
+    },
+    {
+      "case": "source_execution_missing",
+      "outcome": "source_timeout_contract_missing",
+      "passed": true
+    },
+    {
+      "case": "complete",
+      "outcome": "communication_incomplete",
+      "passed": true
+    },
+    {
+      "case": "fresh",
+      "outcome": "communication_stale",
+      "passed": true
+    },
+    {
+      "case": "identity_unique",
+      "outcome": "identity_ambiguous",
+      "passed": true
+    },
+    {
+      "case": "human_takeover",
+      "outcome": "human_takeover",
+      "passed": true
+    },
+    {
+      "case": "delivery_failure",
+      "outcome": "delivery_failure",
+      "passed": true
+    },
+    {
+      "case": "item_changed",
+      "outcome": "item_scope_changed",
+      "passed": true
+    },
+    {
+      "case": "other_blocker",
+      "outcome": "other_blockers",
+      "passed": true
+    },
+    {
+      "case": "three_reduced_to_two",
+      "outcome": "original_three_or_more",
+      "passed": true
+    },
+    {
+      "case": "unproven_original_trigger",
+      "outcome": "original_trigger_unproven",
+      "passed": true
+    },
+    {
+      "case": "partial_reply",
+      "outcome": "human_handoff",
+      "passed": true
+    },
+    {
+      "case": "repeat_reply",
+      "outcome": "human_handoff",
+      "passed": true
+    },
+    {
+      "case": "one_handoff",
+      "outcome": 1,
+      "passed": true
+    },
+    {
+      "case": "no_timeout_effect",
+      "outcome": 0,
+      "passed": true
+    },
+    {
+      "case": "one_first_email_effect",
+      "outcome": 1,
+      "passed": true
+    },
+    {
+      "case": "one_note_effect",
+      "outcome": 1,
+      "passed": true
+    },
+    {
+      "case": "unknown_send",
+      "outcome": "send_unknown",
+      "passed": true
+    },
+    {
+      "case": "unknown_timer_not_started",
+      "outcome": null,
+      "passed": true
+    },
+    {
+      "case": "unknown_not_resent",
+      "outcome": "already_attempted",
+      "passed": true
+    },
+    {
+      "case": "unknown_reconcile_no_match",
+      "outcome": "send_unknown",
+      "passed": true
+    },
+    {
+      "case": "unknown_wait_path_blocked",
+      "outcome": "send_not_verified",
+      "passed": true
+    },
+    {
+      "case": "total_mock_send_calls",
+      "outcome": 2,
+      "passed": true
+    },
+    {
+      "case": "shadow_sender_disabled",
+      "outcome": "disabled",
+      "passed": true
+    },
+    {
+      "case": "no_console_effect_executed",
+      "outcome": 0,
+      "passed": true
+    }
+  ],
+  "mail_preview": {
+    "subject": "Please confirm the dresses in your order ebd20261105-1295",
+    "body": "Hi there,\n\nThank you for your order with EllenBridals. Your order is currently on hold while we confirm your selection. Please reply to this email within 48 hours to let us know which dresses you would like to keep.\n\nYour order includes the following dresses:\n\nItem 337567 — Color: As picture, Size: 2, Quantity: 1\nItem 337573 — Color: Black, Size: 2, Quantity: 1\n\nOur return policy does not support ordering multiple dresses with the intention of keeping only one and returning the rest. Any return request remains subject to the conditions and exclusions in our return policy:\nhttps://www.ellenbridals.com/article/return-policy.html\n\nAre these dresses for different people or occasions, or are you planning to compare styles or sizes after they arrive?\n\nPlease reply to let us know your plans:\n\n- If you plan to keep all the dresses, please confirm this.\n- If you would like to keep only some, please identify the items and quantities.\n- If you are still deciding on a style or size, let us know what you are unsure about so our team can help you review the options before production.\n\nBest regards,\nEllenBridals Customer Service\n",
+    "template_version": "multi_dress.first_round.v1",
+    "content_hash": "819fd6be2a4705be2cc02cede5d4e7c70d00842c0110cda1a907a338a49515ea"
+  },
+  "synthetic_conditions": [
+    "complete communication history",
+    "verified original two-dress trigger",
+    "policy approval",
+    "send receipt and reply events"
+  ],
+  "fixture_sha256": "52af6e3a23089fa89a75fb674ee00133000b0d49c070f4e2546b3461dc1f75b4",
+  "workflow_sha256": "6a7808665b673db44ce8cb1cbcc2c2e649002a102e426ee71b83b066ebac06f2",
+  "note_verification": "Post-note baseline in this replay is synthetic; real note executor is covered by HTTP-fake Preview/Confirm tests."
+}

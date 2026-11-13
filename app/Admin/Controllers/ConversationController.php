@@ -73,6 +73,7 @@ class ConversationController extends Controller
             'channelAccount',
             'analysis',
             'assistanceFeedback' => fn ($query) => $query->latest('id')->limit(30),
+            'followUps' => fn ($query) => $query->where('status', '!=', 'closed')->latest('id'),
             'labels',
             'events' => fn ($query) => $query->with('attachments')->orderBy('occurred_at')->orderBy('id'),
             'decisionCase.nodes.evidence.event',

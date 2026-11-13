@@ -29,7 +29,7 @@ class GwsClientTest extends TestCase
     {
         Process::fake([
             '*' => Process::result(output: implode("\n", [
-                json_encode(['threads' => [['id' => 'thread-1']]], JSON_THROW_ON_ERROR),
+                json_encode(['threads' => [['id' => 'thread-1', 'snippet' => '包裹已到达…']]], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
                 json_encode(['threads' => [['id' => 'thread-2']]], JSON_THROW_ON_ERROR),
             ])),
         ]);

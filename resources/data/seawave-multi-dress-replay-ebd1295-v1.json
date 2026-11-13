@@ -1,0 +1,127 @@
+{
+  "schema_version": "multi_dress.design_replay.v1",
+  "mode": "offline_design_simulation",
+  "identity": {
+    "console_key": "seawave",
+    "site_key": "ellenbridals",
+    "sid": 36,
+    "oid": 188301,
+    "order_number": "ebd20261105-1295",
+    "contact_id": 16
+  },
+  "provenance": [
+    {
+      "path": "storage/app/private/research/customer-contacts-20261110/order-ebd20261105-1295.json",
+      "sha256": "09aa1f885ff42adc6c7aca11bb8077deb63b9554319bfec7fd9dce38195909a0"
+    },
+    {
+      "path": "storage/app/private/research/customer-contacts-20261110/contact-16-histories.json",
+      "sha256": "61b7a24a31af0eebc9fe7aa8fb419b9cf8e859f7dbee2fa500b6a376b4b92d49"
+    },
+    {
+      "path": "storage/app/private/research/multi-dress-replay-20261113/order-current.json",
+      "sha256": "48960cc52a4d6ddbf1b399399bd16e03a8ecb36871e00ac41ab83094f1a7befb"
+    },
+    {
+      "path": "storage/app/private/console-research/seawave-multi-first-round-scope-20261113-071244.json",
+      "sha256": "697f4f3fbdc55472438e11b9b31d2e470b23b3d4c96ba7fb06806061d3689fa0"
+    }
+  ],
+  "historical": {
+    "order_number": "ebd20261105-1295",
+    "sid": 36,
+    "oid": 188301,
+    "status": {
+      "order_status": 0,
+      "order_status_text": "待处理",
+      "payment_status": 1,
+      "payment_status_text": "已付款",
+      "shipping_status": 0,
+      "shipping_status_text": "待发货",
+      "refund_status": 0,
+      "cancellation_stage": null,
+      "cancellation_reason": null,
+      "cancellation_email_requested": false
+    },
+    "items": [
+      {
+        "id": 261668,
+        "item_code": "337567",
+        "type": "dress",
+        "status": 1,
+        "size": "2",
+        "color": "As picture",
+        "quantity": 1
+      },
+      {
+        "id": 261667,
+        "item_code": "337573",
+        "type": "dress",
+        "status": 1,
+        "size": "2",
+        "color": "Black",
+        "quantity": 1
+      }
+    ]
+  },
+  "current": {
+    "order_number": "ebd20261105-1295",
+    "sid": 36,
+    "oid": 188301,
+    "status": {
+      "order_status": 1,
+      "order_status_text": "处理中",
+      "payment_status": 1,
+      "payment_status_text": "已付款",
+      "shipping_status": 0,
+      "shipping_status_text": "待发货",
+      "refund_status": 0,
+      "cancellation_stage": null,
+      "cancellation_reason": null,
+      "cancellation_email_requested": false
+    },
+    "items": [
+      {
+        "id": 261668,
+        "item_code": "337567",
+        "type": "dress",
+        "status": -1,
+        "size": "2",
+        "color": "As picture",
+        "quantity": 1
+      },
+      {
+        "id": 261667,
+        "item_code": "337573",
+        "type": "dress",
+        "status": 1,
+        "size": "2",
+        "color": "Black",
+        "quantity": 1
+      }
+    ]
+  },
+  "current_contact": {
+    "snapshot_captured_at": "2026-11-13T07:12:44+00:00",
+    "released": true,
+    "version": 5,
+    "status": "factory",
+    "human_contact_evidence": true,
+    "customer_requirement_summary": "保留337573，取消337567；来自内部沟通单记录，未取得原始客户回复"
+  },
+  "historical_limitations": {
+    "complete_communication_history": false,
+    "verified_original_two_dress_rule": false,
+    "rule_version": null
+  },
+  "mail": {
+    "brand": "EllenBridals",
+    "expected_account": "ellenbridals.com@gmail.com",
+    "preview_recipient": "customer@example.invalid",
+    "policy_url": "https://www.ellenbridals.com/article/return-policy.html",
+    "policy_snapshot_version": "2026-11-11",
+    "template_version": "multi_dress.first_round.v1"
+  },
+  "synthetic_clock_origin": "2026-11-13T09:00:00Z",
+  "synthetic_branch_notice": "历史回放之后的完整历史检查、审核、发送、回复和超时均是假数据，不是客户事件或真实业务动作。"
+}

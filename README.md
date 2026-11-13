@@ -4,6 +4,8 @@
 
 当前执行路径、候选状态和退役条件以 [当前工作流与路线图](docs/architecture/current-workflows-and-roadmap.md) 为准；[健康审查](docs/reviews/2026-10-26-project-health-and-roadmap.md) 保留审查时点的证据。
 
+Seawave 多件确认首轮的开发实现、隔离回放和待联调接口见 [运行手册](docs/runbooks/seawave-multi-dress-first-round.md) 与 [开发交付记录](docs/research/2026-11-13-multi-dress-implementation.md)。默认 shadow，未启用真实发信、Console 写回或超时推进。
+
 ## 环境
 
 - PHP 8.4+

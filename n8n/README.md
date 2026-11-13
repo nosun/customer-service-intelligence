@@ -6,6 +6,8 @@
 - `work/qa-draft-agent-v1`：当前发布版本 `1.1.0`；候选版本 `1.2.0` 处于 `evaluating`。它由 Laravel 后台异步触发，执行 clause 拆分与分类、事实解析、Policy 检索、英文生成、目标语言翻译、Review、单次 Repair、Final Review，并把草稿回写 Laravel。
 - `work/ticket-draft-v1`：Ticket 在线运行中心候选版本 `1.0.0`。当前只处理订单/生产进度和物流进度，使用阶段截止上下文、console-new 只读事实和 verified Policy，完成 Draft、Review/Repair 后只保存本地草稿。
 
+多件确认新增候选 `work/multi-dress-first-round-v1@1.0.0`，导出文件默认 inactive。它只分析缺失意图、请求固定模板渲染、独立审核及最多一次修订，不调用 Gmail 或 Console。当前只有 PHP 隔离回放与节点静态检查，尚未导入或运行真实 n8n；该 key 尚未注册发布门禁，不能用 PHP 回放报告激活。环境变量、evaluating 注册和验收要求见 [多件确认运行手册](../docs/runbooks/seawave-multi-dress-first-round.md)。
+
 Ticket Workflow 的发布验证使用 `resources/data/ticket-draft-replay-v1.json` 和 `tickets:run-n8n-draft-replay`。回放仍走真实 n8n Webhook，但 Fact Gateway 只读取 checksum 绑定的冻结 Fixture，不访问实时订单状态；回放 Case/WorkItem 使用独立类型和队列，默认运行后清理。
 
 `1.2.0` 增加确定性回放 fixture、缺失意图纠正、多意图覆盖校验、风险矩阵、商品标题/SN 清理和无 Action Proposal 时的后续动作承诺拦截。Policy 未经人工确认时只生成保守的 blocked Draft，不会被当成 verified Policy 使用。

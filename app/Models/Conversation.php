@@ -26,6 +26,11 @@ class Conversation extends Model
         return $this->hasMany(ConversationDraft::class);
     }
 
+    public function followUps(): HasMany
+    {
+        return $this->hasMany(FollowUp::class);
+    }
+
     public function runtimeCaseSource(): HasOne
     {
         return $this->hasOne(CustomerCaseSource::class, 'source_id')
