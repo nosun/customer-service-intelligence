@@ -39,7 +39,7 @@ class MultiDressRoundLedgerTest extends TestCase
         $manager = app(MultiDressRoundManager::class);
         $s = Scenario::snapshot();
         $a = $manager->ingest($s, Scenario::communication());
-        $s['identity'] = [...$s['identity'], 'sid' => 1, 'site_key' => 'dressafford', 'order_number' => 'dad20990101-1'];
+        $s['identity'] = [...$s['identity'], 'sid' => 35, 'site_key' => 'dressafford', 'order_number' => 'dad20990101-1'];
         $b = $manager->ingest($s, Scenario::communication());
         $this->assertNotSame($a->id, $b->id);
         $s['identity']['console_key'] = 'mydorris';

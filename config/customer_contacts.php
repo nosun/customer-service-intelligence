@@ -11,7 +11,7 @@ return [
     'page_limit' => 100,
     'communication_fresh_seconds' => 60,
     'sites' => [
-        'dressafford' => ['sid' => 1, 'prefix' => 'dad', 'brand' => 'DressAfford', 'send_enabled' => (bool) env('CUSTOMER_CONTACT_DAD_SEND_ENABLED', false),
+        'dressafford' => ['sid' => 35, 'prefix' => 'dad', 'brand' => 'DressAfford', 'send_enabled' => (bool) env('CUSTOMER_CONTACT_DAD_SEND_ENABLED', false),
             'policy_verified' => (bool) env('CUSTOMER_CONTACT_DAD_POLICY_VERIFIED', false), 'policy_version' => '2026-11-11', 'policy_url' => 'https://www.dressafford.com/article/return-policy.html'],
         'ellenbridals' => ['sid' => 36, 'prefix' => 'ebd', 'brand' => 'EllenBridals', 'send_enabled' => (bool) env('CUSTOMER_CONTACT_EBD_SEND_ENABLED', false),
             'policy_verified' => (bool) env('CUSTOMER_CONTACT_EBD_POLICY_VERIFIED', false), 'policy_version' => '2026-11-11', 'policy_url' => 'https://www.ellenbridals.com/article/return-policy.html'],

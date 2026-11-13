@@ -13,6 +13,38 @@ use Tests\TestCase;
 
 class MultiDressContactReadTest extends TestCase
 {
+    public function test_dressafford_snapshot_uses_verified_seawave_site_35(): void
+    {
+        config(['services.console_new.base_url' => 'https://console.example.invalid/api/admin', 'services.console_new.token' => 'fixture']);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            $path = parse_url($request->url(), PHP_URL_PATH);
+            if ($path === '/api/admin/orders/dad20990101-1') {
+                return Http::response(['success' => true, 'data' => ['id' => 900002, 'order_no' => 'dad20990101-1',
+                    'site' => ['id' => 35, 'name' => 'dressafford.com', 'url' => 'https://www.dressafford.com'],
+                    'customer' => ['email' => 'customer@example.invalid'], 'status' => ['payment_status' => 1, 'order_status' => 0, 'shipping_status' => 0],
+                    'items' => [], 'notes' => []]]);
+            }
+            $items = [];
+            if ($path === '/api/admin/customer-contacts') {
+                $this->assertSame(35, (int) $request['sid']);
+                $this->assertSame('dad20990101-1', $request['number']);
+                $items = [['id' => 401, 'oid' => 900002, 'source' => 'multi_dress', 'status' => 'customer', 'version' => 1,
+                    'blocks_assignment' => true, 'released_at' => null, 'deleted_at' => null, 'internal_note' => '', 'customer_requirement' => '']];
+            } else {
+                $this->assertContains($path, ['/api/admin/customer-contacts/401/histories', '/api/admin/work-orders']);
+            }
+
+            return Http::response(['success' => true, 'data' => ['items' => $items, 'pagination' => ['current_page' => 1, 'last_page' => 1]]]);
+        });
+        $snapshot = app(ConsoleContactReader::class)->snapshot('dad20990101-1');
+        $this->assertSame('dressafford', $snapshot['identity']['site_key']);
+        $this->assertSame(35, $snapshot['identity']['sid']);
+        $this->assertTrue($snapshot['order']['on_hold']);
+        $this->assertFalse($snapshot['console_prior_contact']);
+        Http::assertSentCount(4);
+    }
+
     public function test_contact_pagination_is_complete_only_on_final_page(): void
     {
         config(['services.console_new.base_url' => 'https://console.example.invalid/api/admin', 'services.console_new.token' => 'fixture']);

@@ -39,6 +39,9 @@ class MultiDressPolicy
             || ($order['shipped'] ?? true) || ($order['production_started'] ?? null) === true || ($order['on_hold'] ?? false) !== true) {
             return $result('skip', 'already_handled_or_ineligible');
         }
+        if (($s['human_hold'] ?? true) || ($s['console_prior_contact'] ?? false) || ($c['human_takeover'] ?? true) || ($c['prior_contact'] ?? true) || ($c['reply_seen'] ?? true)) {
+            return $result('manual', 'human_contact_or_reply');
+        }
         if ($this->count($s) < 2) {
             return $result('manual', 'item_scope_changed');
         }
@@ -54,9 +57,6 @@ class MultiDressPolicy
             if (! is_int($item['quantity'] ?? null) || $item['quantity'] < 1) {
                 return $result('manual', 'item_quantity_unknown');
             }
-        }
-        if (($s['human_hold'] ?? true) || ($s['console_prior_contact'] ?? false) || ($c['human_takeover'] ?? true) || ($c['prior_contact'] ?? true) || ($c['reply_seen'] ?? true)) {
-            return $result('manual', 'human_contact_or_reply');
         }
         foreach (['complete', 'fresh', 'identity_unique'] as $key) {
             if (($c[$key] ?? false) !== true) {

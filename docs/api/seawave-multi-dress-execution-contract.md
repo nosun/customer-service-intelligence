@@ -4,7 +4,7 @@
 
 ## 终端及入口
 
-仅使用 `console_key=seawave`，来源为 `console-new.seawavetech.com` 的现存 `source=multi_dress` 沟通单。品牌固定 `dressafford/sid=1/dad` 与 `ellenbridals/sid=36/ebd`。MyDorris 不进入本模块执行链。所有读取使用现有 ConsoleNewConnections 和资源白名单；不接受任意 URL。
+仅使用 `console_key=seawave`，来源为 `console-new.seawavetech.com` 的现存 `source=multi_dress` 沟通单。品牌固定 `dressafford/sid=35/dad` 与 `ellenbridals/sid=36/ebd`。DressAfford ID 35 已在2026-11-13通过该终端真实订单读取核实，不能使用其它系统的站点 ID。MyDorris 不进入本模块执行链。所有读取使用现有 ConsoleNewConnections 和资源白名单；不接受任意 URL。
 
 当前读取订单、沟通单列表与详情、沟通历史及工单列表。列表完整分页，页码不符或达到上限即失败。当前源码不依据未知工单状态码推断“尚未生产”：只有订单明确提供布尔 `production_started=false` 才能形成此证明；目前生产文档未保证该字段，缺失进入人工核查。
 
